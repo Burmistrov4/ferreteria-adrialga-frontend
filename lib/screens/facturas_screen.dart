@@ -39,9 +39,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar facturas: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al cargar facturas: $e')));
       }
     }
   }
@@ -67,6 +67,7 @@ class _FacturasScreenState extends State<FacturasScreen> {
     if (dt == null) return '---';
     return '${dt.day.toString().padLeft(2, "0")}/${dt.month.toString().padLeft(2, "0")}/${dt.year}';
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -98,9 +99,7 @@ class _FacturasScreenState extends State<FacturasScreen> {
                 ),
                 Expanded(
                   child: _filtradas.isEmpty
-                      ? const Center(
-                          child: Text('No hay facturas registradas'),
-                        )
+                      ? const Center(child: Text('No hay facturas registradas'))
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                           itemCount: _filtradas.length,
@@ -113,8 +112,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
                               child: ListTile(
                                 onTap: () => _verDetalle(f),
                                 leading: CircleAvatar(
-                                  backgroundColor:
-                                      Colors.blue.withOpacity(0.12),
+                                  backgroundColor: Colors.blue.withOpacity(
+                                    0.12,
+                                  ),
                                   child: const Icon(
                                     Icons.receipt_long,
                                     color: Colors.blue,
@@ -148,9 +148,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
                                       tooltip: 'Imprimir',
                                       onPressed: () =>
                                           FacturaPdfService.imprimir(
-                                        f,
-                                        tasa: _tasa,
-                                      ),
+                                            f,
+                                            tasa: _tasa,
+                                          ),
                                     ),
                                   ],
                                 ),

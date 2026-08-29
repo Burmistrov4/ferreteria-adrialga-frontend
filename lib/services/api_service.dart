@@ -12,21 +12,36 @@ import '../models/factura_model.dart';
 import '../models/producto_model.dart';
 
 class ApiService {
-  // URL base sobrescribible en producción de forma sencilla, p. ej.:
-  //   flutter run --dart-define=API_BASE_URL=https://api.tudominio.com/api
-  // Si no se define, se usan las URLs por defecto para desarrollo/local.
+  // ─── Configuración de la URL base de la API ───────────────────────────────
+  // PRODUCCIÓN (por defecto): backend desplegado en Railway.
+  //   URL pública: https://ferreteria-adrialga-backend-production.up.railway.app
+  //
+  // DESARROLLO LOCAL: para apuntar al backend local (http://localhost:3000),
+  // compila/ejecuta con el flag de entorno USE_LOCAL_API=true:
+  //   flutter run -d chrome --dart-define=USE_LOCAL_API=true
+  //
+  // También se puede sobrescribir la URL completa de forma manual:
+  //   flutter run --dart-define=API_BASE_URL=https://mi-api.com/api
   static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
+  static const bool _usarLocal = bool.fromEnvironment('USE_LOCAL_API');
+
+  static const String _urlProduccion = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://ferreteria-adrialga-backend-production.up.railway.app/api',
+  );
+  static const String _urlLocalWeb = 'http://localhost:3000/api';
 
   // Determinación dinámica de la URL base según la plataforma
   static String get baseUrl {
-    if (_baseUrlOverride.isNotEmpty) return _baseUrlOverride;
-    if (kIsWeb) {
-      return 'http://localhost:3000/api';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000/api'; // Emulador Android
-    } else {
-      return 'http://localhost:3000/api'; // Windows / macOS / iOS Simulator
+    if (_baseUrlOverride.isNotEmpty && _usarLocal) return _baseUrlOverride;
+    if (_usarLocal) {
+      // Desarrollo local
+      if (kIsWeb) return _urlLocalWeb;
+      if (!kIsWeb && Platform.isAndroid) return 'http://10.0.2.2:3000/api'; // Emulador Android
+      return _urlLocalWeb; // Windows / macOS / iOS Simulator
     }
+    // Producción (por defecto en compilación web para Vercel)
+    return _urlProduccion;
   }
 
   // Token JWT en memoria, persistido en SharedPreferences para reutilizarlo
