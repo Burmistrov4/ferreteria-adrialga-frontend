@@ -89,7 +89,30 @@ class ApiService {
     }
   }
 
-  // --- BÚSQUEDA Y SENIAT ---
+  // --- CLIENTES ---
+  /// Búsqueda flexible en el servidor (nombre, RIF o cédula). Consulta
+  /// GET /clientes?q=... que filtra con OR en el backend. Devuelve una lista
+  /// para que la UI pueda desambiguar coincidencias parciales.
+  static Future<List<ClienteModel>> buscarClientes(String query) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/clientes?q=${Uri.encodeComponent(query)}'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => ClienteModel.fromJson(json)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// @deprecated Usar [buscarClientes]: /clientes/buscar ahora devuelve una
+  /// lista y la búsqueda también acepta nombre.
   static Future<ClienteModel?> buscarClientePorDocumento(String query) async {
     try {
       final response = await http
@@ -168,9 +191,14 @@ class ApiService {
     }
   }
 
-  static Future<List<ClienteModel>> getClientes() async {
+  static Future<List<ClienteModel>> getClientes([String? query]) async {
+    final uri = Uri.parse(
+      query == null || query.trim().isEmpty
+          ? '$baseUrl/clientes'
+          : '$baseUrl/clientes?q=${Uri.encodeComponent(query.trim())}',
+    );
     final response = await http
-        .get(Uri.parse('$baseUrl/clientes'), headers: _headers)
+        .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -450,6 +478,24 @@ class ApiService {
     }
     throw Exception(
       'Error al cargar métricas del dashboard (HTTP ${response.statusCode})',
+    );
+  }
+
+  /// Obtiene la serie financiera del dashboard para un periodo
+  /// (hoy | semana | mes | anio): ventas agregadas, ticket promedio, margen,
+  /// valoración de inventario, caja diaria por método y alertas de stock.
+  static Future<Map<String, dynamic>> getSerieFinanciera(String periodo) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/dashboard/serie?periodo=$periodo'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(
+      'Error al cargar la serie financiera (HTTP ${response.statusCode})',
     );
   }
 

@@ -383,6 +383,31 @@ class _PosScreenState extends State<PosScreen> {
                                     color: Colors.grey,
                                   ),
                                 ),
+                                // Datos de contacto completos del cliente
+                                // seleccionado (cargados desde la BD al
+                                // elegirlo en el buscador del diálogo).
+                                if (_clienteSeleccionado.direccion != null &&
+                                    _clienteSeleccionado.direccion!.isNotEmpty)
+                                  Text(
+                                    _clienteSeleccionado.direccion!,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                if (_clienteSeleccionado.telefono != null &&
+                                    _clienteSeleccionado.telefono!.isNotEmpty)
+                                  Text(
+                                    'Tel: ${_clienteSeleccionado.telefono}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                               ],
                             ),
                           ),

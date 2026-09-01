@@ -1,0 +1,17 @@
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/CMakeFiles/INSTALL.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/CMakeFiles/ALL_BUILD.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/CMakeFiles/ZERO_CHECK.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/flutter/CMakeFiles/flutter_wrapper_plugin.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/flutter/CMakeFiles/flutter_wrapper_app.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/flutter/CMakeFiles/flutter_assemble.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/flutter/CMakeFiles/INSTALL.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/runner/CMakeFiles/adrialga_frontend.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/runner/CMakeFiles/INSTALL.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/runner/CMakeFiles/ALL_BUILD.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/printing/CMakeFiles/printing_plugin.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/printing/CMakeFiles/INSTALL.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/printing/CMakeFiles/ALL_BUILD.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/jni/CMakeFiles/INSTALL.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/jni/CMakeFiles/ALL_BUILD.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/jni/shared/CMakeFiles/INSTALL.dir
+C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/plugins/jni/shared/CMakeFiles/ALL_BUILD.dir

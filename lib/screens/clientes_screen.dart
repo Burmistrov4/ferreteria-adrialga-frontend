@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/cliente_model.dart';
@@ -15,6 +17,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
   List<ClienteModel> _clientes = [];
   bool _isLoading = true;
   String _filtro = '';
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -22,10 +25,18 @@ class _ClientesScreenState extends State<ClientesScreen> {
     _cargarClientes();
   }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
   Future<void> _cargarClientes() async {
     setState(() => _isLoading = true);
     try {
-      final res = await ApiService.getClientes();
+      // Búsqueda server-side: el backend filtra por Nombre / Razón Social,
+      // RIF o número de documento con un OR en Prisma.
+      final res = await ApiService.getClientes(_filtro);
       setState(() {
         _clientes = res;
       });
@@ -38,6 +49,11 @@ class _ClientesScreenState extends State<ClientesScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _onFiltroChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _cargarClientes);
   }
 
   void _abrirDialogoCliente([ClienteModel? cliente]) async {
@@ -113,7 +129,10 @@ class _ClientesScreenState extends State<ClientesScreen> {
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
-              onChanged: (val) => setState(() => _filtro = val),
+              onChanged: (val) {
+                _filtro = val;
+                _onFiltroChanged(val);
+              },
             ),
             const SizedBox(height: 16),
             Expanded(

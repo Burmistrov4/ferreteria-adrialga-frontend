@@ -1,0 +1,28 @@
+^C:\USERS\LORO\DESKTOP\CUARTO SEMESTRE\3. ANALISIS DE SISTEMAS II\ADRIALGA_SISTEMA_RENOVADO\ADRIALGA_FRONTEND\BUILD\WINDOWS\X64\CMAKEFILES\AA86F70268BEB7DD2213DCD4628D08DD\FLUTTER_WINDOWS.DLL.RULE
+setlocal
+"D:\Visual Studio\Visual Studio 2026\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E env FLUTTER_ROOT=C:\Users\Loro\develop\flutter "PROJECT_DIR=C:\Users\Loro\Desktop\Cuarto Semestre\3. Analisis de Sistemas II\Adrialga_Sistema_Renovado\adrialga_frontend" FLUTTER_ROOT=C:\Users\Loro\develop\flutter "FLUTTER_EPHEMERAL_DIR=C:\Users\Loro\Desktop\Cuarto Semestre\3. Analisis de Sistemas II\Adrialga_Sistema_Renovado\adrialga_frontend\windows\flutter\ephemeral" "PROJECT_DIR=C:\Users\Loro\Desktop\Cuarto Semestre\3. Analisis de Sistemas II\Adrialga_Sistema_Renovado\adrialga_frontend" "FLUTTER_TARGET=C:\Users\Loro\Desktop\Cuarto Semestre\3. Analisis de Sistemas II\Adrialga_Sistema_Renovado\adrialga_frontend\lib\main.dart" DART_DEFINES=VVNFX0xPQ0FMX0FQST10cnVl,RkxVVFRFUl9CVUlMRF9OQU1FPTEuMC4w,RkxVVFRFUl9CVUlMRF9OVU1CRVI9MQ==,RkxVVFRFUl9WRVJTSU9OPTMuNDcuMA==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049NGNmMjQxNjQyNg==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049NWY3NzYyNTY3Mw==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMy4w DART_OBFUSCATION=false TRACK_WIDGET_CREATION=true TREE_SHAKE_ICONS=false "PACKAGE_CONFIG=C:\Users\Loro\Desktop\Cuarto Semestre\3. Analisis de Sistemas II\Adrialga_Sistema_Renovado\adrialga_frontend\.dart_tool\package_config.json" C:/Users/Loro/develop/flutter/packages/flutter_tools/bin/tool_backend.bat windows-x64 Debug
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\LORO\DESKTOP\CUARTO SEMESTRE\3. ANALISIS DE SISTEMAS II\ADRIALGA_SISTEMA_RENOVADO\ADRIALGA_FRONTEND\BUILD\WINDOWS\X64\CMAKEFILES\7A2484A214A9D540F9216170F362F2BC\FLUTTER_ASSEMBLE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\LORO\DESKTOP\CUARTO SEMESTRE\3. ANALISIS DE SISTEMAS II\ADRIALGA_SISTEMA_RENOVADO\ADRIALGA_FRONTEND\WINDOWS\FLUTTER\CMAKELISTS.TXT
+setlocal
+"D:\Visual Studio\Visual Studio 2026\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" "-SC:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/windows" "-BC:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64" --check-stamp-file "C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/flutter/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -22,6 +22,9 @@ class _CobroDialogState extends State<CobroDialog> {
   final _vesEfectivoController = TextEditingController(text: '0.00');
   final _pagoMovilController = TextEditingController(text: '0.00');
   final _puntoVentaController = TextEditingController(text: '0.00');
+  // Referencia del pago electrónico (Pago Móvil / Punto de Venta). Opcional:
+  // se persiste en la tabla `pagos` del backend aunque el pago sea en Bs.
+  final _referenciaController = TextEditingController();
 
   double get _totalVES => widget.totalUSD * widget.tasaCambio;
 
@@ -68,6 +71,7 @@ class _CobroDialogState extends State<CobroDialog> {
     _vesEfectivoController.dispose();
     _pagoMovilController.dispose();
     _puntoVentaController.dispose();
+    _referenciaController.dispose();
     super.dispose();
   }
 
@@ -208,6 +212,19 @@ class _CobroDialogState extends State<CobroDialog> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            // Referencia del pago electrónico (Pago Móvil / Punto de Venta).
+            // Opcional: se guarda en la factura/pagos incluso si el pago
+            // fue en bolívares, junto con la tasa BCV usada en ese momento.
+            TextField(
+              controller: _referenciaController,
+              decoration: const InputDecoration(
+                labelText: 'Referencia (opcional - Pago Móvil / Punto)',
+                prefixIcon: Icon(Icons.receipt_long),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
             const SizedBox(height: 16),
             // Bloque de Vuelto / Restante
             Container(
@@ -293,6 +310,11 @@ class _CobroDialogState extends State<CobroDialog> {
                                 'efectivoVES': _montoVesEfectivo,
                                 'pagoMovil': _montoPagoMovil,
                                 'puntoVenta': _montoPuntoVenta,
+                                // Referencia bancaria (opcional) y tasa usada
+                                // en el momento del cobro; el backend las
+                                // persiste en la tabla `pagos` y en la factura.
+                                'referencia': _referenciaController.text.trim(),
+                                'tasaCambio': widget.tasaCambio,
                               },
                               'tasaCambio': widget.tasaCambio,
                             });

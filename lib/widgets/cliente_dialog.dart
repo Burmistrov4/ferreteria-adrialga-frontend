@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,6 +21,10 @@ class _ClienteDialogState extends State<ClienteDialog>
 
   final _searchDocController = TextEditingController();
   bool _isSearching = false;
+  // Búsqueda flexible en tiempo real (nombre, RIF o cédula) con debounce
+  // de 350 ms para no golpear la API en cada tecla.
+  List<ClienteModel> _resultados = [];
+  Timer? _debounce;
 
   String _tipoDoc = 'V';
   final _numDocController = TextEditingController();
@@ -55,7 +61,20 @@ class _ClienteDialogState extends State<ClienteDialog>
     _direccionController.dispose();
     _telefonoController.dispose();
     _emailController.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    if (value.trim().isEmpty) {
+      setState(() {
+        _resultados = [];
+        _isSearching = false;
+      });
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), _buscarClienteLocal);
   }
 
   Future<void> _buscarClienteLocal() async {
@@ -63,12 +82,14 @@ class _ClienteDialogState extends State<ClienteDialog>
     if (query.isEmpty) return;
 
     setState(() => _isSearching = true);
-    final cliente = await ApiService.buscarClientePorDocumento(query);
-    setState(() => _isSearching = false);
+    final clientes = await ApiService.buscarClientes(query);
+    if (!mounted) return;
+    setState(() {
+      _resultados = clientes;
+      _isSearching = false;
+    });
 
-    if (cliente != null && mounted) {
-      Navigator.of(context).pop(cliente);
-    } else if (mounted) {
+    if (clientes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -76,8 +97,6 @@ class _ClienteDialogState extends State<ClienteDialog>
           ),
         ),
       );
-      _numDocController.text = query.replaceAll(RegExp(r'[^0-9]'), '');
-      _tabController.animateTo(1);
     }
   }
 
@@ -202,10 +221,9 @@ class _ClienteDialogState extends State<ClienteDialog>
                   Padding(
                     padding: const EdgeInsets.all(20.0),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text(
-                          'Búsqueda Rápida en Base de Datos',
+                          'Búsqueda por Nombre, Cédula o RIF',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -214,34 +232,79 @@ class _ClienteDialogState extends State<ClienteDialog>
                         const SizedBox(height: 16),
                         TextField(
                           controller: _searchDocController,
-                          decoration: const InputDecoration(
-                            labelText: 'Ingrese Cédula o RIF (Ej: J123456789 o 18234567)',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.badge),
-                          ),
-                          onSubmitted: (_) => _buscarClienteLocal(),
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: ElevatedButton.icon(
-                            onPressed: _isSearching
-                                ? null
-                                : _buscarClienteLocal,
-                            icon: _isSearching
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                          decoration: InputDecoration(
+                            labelText:
+                                'Nombre / Cédula / RIF (búsqueda en tiempo real)',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.badge),
+                            suffixIcon: _isSearching
+                                ? const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
                                     ),
                                   )
-                                : const Icon(Icons.search),
-                            label: const Text('BUSCAR CLIENTE'),
+                                : (_searchDocController.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear),
+                                        onPressed: () {
+                                          _searchDocController.clear();
+                                          _onSearchChanged('');
+                                        },
+                                      )
+                                    : null),
                           ),
+                          onChanged: _onSearchChanged,
+                          onSubmitted: (_) => _buscarClienteLocal(),
                         ),
                         const SizedBox(height: 12),
+                        Expanded(
+                          child: _resultados.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    _searchDocController.text.trim().isEmpty
+                                        ? 'Escriba para buscar clientes...'
+                                        : 'Sin coincidencias. Use el registro SENIAT o Manual.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  itemCount: _resultados.length,
+                                  separatorBuilder: (_, _) =>
+                                      const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final c = _resultados[index];
+                                    return ListTile(
+                                      leading: CircleAvatar(
+                                        child: Text(
+                                          c.nombreRazonSocial.isNotEmpty
+                                              ? c.nombreRazonSocial[0]
+                                                  .toUpperCase()
+                                              : 'C',
+                                        ),
+                                      ),
+                                      title: Text(
+                                        c.nombreRazonSocial,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        '${c.tipoDocumento}-${c.numDocumento}'
+                                        '${c.telefono != null && c.telefono!.isNotEmpty ? ' | Tel: ${c.telefono}' : ''}',
+                                      ),
+                                      onTap: () =>
+                                          Navigator.of(context).pop(c),
+                                    );
+                                  },
+                                ),
+                        ),
+                        const SizedBox(height: 8),
                         TextButton(
                           onPressed: () =>
                               Navigator.of(context)

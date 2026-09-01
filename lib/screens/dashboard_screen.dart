@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 
 import 'pos_screen.dart';
 import 'inventario_screen.dart';
-import 'categorias_screen.dart';
 import 'clientes_screen.dart';
 import 'proveedores_screen.dart';
 import 'entrada_screen.dart';
 import 'facturas_screen.dart';
 import 'login_screen.dart';
 import '../services/api_service.dart';
+
+import 'configuracion_screen.dart';
 
 String _num(dynamic v) {
   if (v == null) return '0';
@@ -20,14 +21,47 @@ String _moneda(dynamic v) {
   return n.toStringAsFixed(2);
 }
 
-class _ModuloItem {
+/// Fuente única de verdad de los 8 módulos numerados del sistema.
+/// El Grid del Dashboard y el Drawer/Sidebar renderizan AMBOS desde esta
+/// lista, garantizando que números, nombres, iconos y destinos coincidan
+/// siempre con el flujo operativo de la ferretería.
+class _ModuloSistema {
+  final int numero;
   final String titulo;
+  final String seccion; // OPERACIÓN | ADMINISTRACIÓN (agrupación del Drawer)
   final IconData icon;
   final Color color;
-  final Widget pantalla;
+  final Widget? pantalla; // null → acción especial (ej. módulo 7: scroll)
 
-  const _ModuloItem(this.titulo, this.icon, this.color, this.pantalla);
+  const _ModuloSistema(
+    this.numero,
+    this.titulo,
+    this.seccion,
+    this.icon,
+    this.color,
+    this.pantalla,
+  );
 }
+
+const List<_ModuloSistema> _modulosSistema = [
+  _ModuloSistema(1, 'Ventas / POS', 'OPERACIÓN', Icons.point_of_sale,
+      Colors.blueAccent, PosScreen()),
+  _ModuloSistema(2, 'Facturas & Ventas', 'OPERACIÓN', Icons.receipt_long,
+      Colors.green, FacturasScreen()),
+  _ModuloSistema(3, 'Clientes', 'OPERACIÓN', Icons.people, Colors.teal,
+      ClientesScreen()),
+  _ModuloSistema(
+      4, 'Productos & Catálogo', 'OPERACIÓN', Icons.inventory_2,
+      Color(0xFFF59E0B), InventarioScreen()),
+  _ModuloSistema(5, 'Entradas & Inventario', 'OPERACIÓN',
+      Icons.add_shopping_cart, Colors.purple, EntradasScreen()),
+  _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
+      Colors.indigo, ProveedoresScreen()),
+  _ModuloSistema(7, 'Métricas & Reportes', 'ADMINISTRACIÓN', Icons.insights,
+      Colors.deepOrange, null), // scroll al panel financiero
+  _ModuloSistema(8, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
+      Colors.blueGrey, ConfiguracionScreen()),
+];
 
 class _MetricaCard extends StatelessWidget {
   final IconData icon;
@@ -122,10 +156,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double _tasaCambio = 36.50;
   bool _tasaEsBCV = false;
 
+  // ── Serie financiera (Fase 3) ──────────────────────────────────────────────
+  String _periodo = 'hoy';
+  Map<String, dynamic>? _serie;
+  bool _cargandoSerie = true;
+  String? _errorSerie;
+
+  static const _periodos = <(String, String)>[
+    ('hoy', 'Hoy'),
+    ('semana', 'Esta Semana'),
+    ('mes', 'Este Mes'),
+    ('anio', 'Este Año'),
+  ];
+
+  // Controlador de scroll: el módulo 7 (Métricas & Reportes) apunta al panel
+  // financiero que vive en este mismo dashboard → hace scroll hacia arriba.
+  final ScrollController _scrollController = ScrollController();
+
+  void _irAMetricas() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _abrirModulo(_ModuloSistema m) {
+    if (m.numero == 7) {
+      _irAMetricas();
+    } else if (m.pantalla != null) {
+      _navegar(m.pantalla!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     _cargarMetricas();
+    _cargarSerie();
     _cargarTasa();
   }
 
@@ -166,6 +241,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => pantalla));
     // Al regresar de un módulo se recargan las métricas para reflejar cambios.
     _cargarMetricas();
+    _cargarSerie();
+  }
+
+  Future<void> _cargarSerie() async {
+    setState(() {
+      _cargandoSerie = true;
+      _errorSerie = null;
+    });
+    try {
+      final data = await ApiService.getSerieFinanciera(_periodo);
+      if (mounted) setState(() { _serie = data; _cargandoSerie = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cargandoSerie = false;
+          _errorSerie = e.toString().replaceAll('Exception: ', '');
+        });
+      }
+    }
   }
 
   void _cerrarSesion() {
@@ -219,6 +313,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               _cargarMetricas();
+              _cargarSerie();
               _cargarTasa();
             },
             tooltip: 'Actualizar',
@@ -232,8 +327,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       drawer: _buildDrawer(),
       body: RefreshIndicator(
-        onRefresh: _cargarMetricas,
+        onRefresh: () async {
+          await Future.wait([_cargarMetricas(), _cargarSerie()]);
+        },
         child: SingleChildScrollView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -241,6 +339,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               _buildEncabezado(),
               const SizedBox(height: 20),
+              // ── Sección financiera (Fase 3) ─────────────────────────────
+              _buildSelectorPeriodo(),
+              const SizedBox(height: 12),
+              _buildKPIsFinancieros(),
+              const SizedBox(height: 20),
+              _buildTendenciaVentas(),
+              const SizedBox(height: 20),
+              _buildCajaDiaria(),
+              const SizedBox(height: 28),
+              // ── Resumen operativo existente ─────────────────────────────
               _buildMetricas(),
               const SizedBox(height: 28),
               const Text(
@@ -253,6 +361,355 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // ═══════════════════ SECCIÓN FINANCIERA (Fase 3) ═══════════════════
+
+  /// Selector temporal: Hoy / Esta Semana / Este Mes / Este Año.
+  Widget _buildSelectorPeriodo() {
+    return Wrap(
+      spacing: 8,
+      children: _periodos.map((p) {
+        final seleccionado = _periodo == p.$1;
+        return ChoiceChip(
+          label: Text(p.$2),
+          selected: seleccionado,
+          selectedColor: Colors.blueAccent,
+          labelStyle: TextStyle(
+            color: seleccionado ? Colors.white : Colors.grey[800],
+            fontWeight: seleccionado ? FontWeight.bold : FontWeight.normal,
+          ),
+          onSelected: (_) {
+            setState(() => _periodo = p.$1);
+            _cargarSerie();
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  /// Tarjetas KPI: Ventas Totales, Margen, Ticket Promedio y Valor Inventario.
+  Widget _buildKPIsFinancieros() {
+    if (_cargandoSerie) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (_errorSerie != null) {
+      return _panelErrorSerie();
+    }
+
+    final ventas = (_serie?['ventas'] as Map<String, dynamic>?) ?? {};
+    final margen = (_serie?['margenGanancia'] as num?) ?? 0;
+    final valorInv = (_serie?['valorInventario'] as num?) ?? 0;
+
+    final kpis = <Widget>[
+      _MetricaCard(
+        icon: Icons.attach_money,
+        color: Colors.green,
+        titulo: 'Ventas Totales',
+        valor: '\$${_moneda(ventas['montoTotal'])}',
+        descripcion:
+            '${_num(ventas['cantidadFacturas'])} facturas en el periodo seleccionado.',
+        onTap: () => _navegar(const FacturasScreen()),
+      ),
+      _MetricaCard(
+        icon: Icons.trending_up,
+        color: margen >= 0 ? Colors.teal : Colors.red,
+        titulo: 'Margen de Ganancia',
+        valor: '\$${_moneda(margen)}',
+        descripcion: '(Precio − Costo histórico) × Cantidad.',
+        onTap: () => _navegar(const FacturasScreen()),
+      ),
+      _MetricaCard(
+        icon: Icons.receipt_long,
+        color: Colors.blueAccent,
+        titulo: 'Ticket Promedio',
+        valor: '\$${_moneda(ventas['ticketPromedio'])}',
+        descripcion: 'Venta total ÷ número de facturas.',
+        onTap: () => _navegar(const FacturasScreen()),
+      ),
+      _MetricaCard(
+        icon: Icons.warehouse,
+        color: Colors.amber.shade800,
+        titulo: 'Valor Inventario',
+        valor: '\$${_moneda(valorInv)}',
+        descripcion: 'Capital invertido: Stock × Costo Promedio.',
+        onTap: () => _navegar(const InventarioScreen()),
+      ),
+    ];
+
+    return GridView.count(
+      crossAxisCount: _columnasMetricas(),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.6,
+      children: kpis,
+    );
+  }
+
+  Widget _panelErrorSerie() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'No se pudieron cargar las métricas financieras: $_errorSerie',
+              style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+            ),
+          ),
+          GestureDetector(
+            onTap: _cargarSerie,
+            child: const Text(
+              'Reintentar',
+              style: TextStyle(
+                color: Colors.blueAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tendencia de ventas: barras horizontales nativas (sin dependencias).
+  Widget _buildTendenciaVentas() {
+    final tituloSerie = switch (_periodo) {
+      'hoy' => 'Ventas por Hora (Hoy)',
+      'semana' => 'Ventas por Día (Últimos 7 días)',
+      'mes' => 'Ventas por Día (Mes Actual)',
+      _ => 'Ventas por Mes (Año Actual)',
+    };
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: _cargandoSerie
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tituloSerie,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _serieBarras(),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _serieBarras() {
+    final serie = (_serie?['serie'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+    if (serie.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'Sin ventas registradas en el periodo seleccionado.',
+          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+        ),
+      );
+    }
+    final maxMonto = serie.fold<double>(
+      0,
+      (max, f) {
+        final m = (f['monto'] as num? ?? 0).toDouble();
+        return m > max ? m : max;
+      },
+    );
+
+    return Column(
+      children: serie.map((f) {
+        final monto = (f['monto'] as num? ?? 0).toDouble();
+        final factor = maxMonto > 0 ? monto / maxMonto : 0.0;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 76,
+                child: Text(
+                  '${f['etiqueta']}',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: factor == 0 ? 0.02 : factor,
+                    child: Container(height: 16, color: Colors.blueAccent),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 90,
+                child: Text(
+                  '\$${_moneda(monto)}',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Desglose de caja diaria por método de pago + alertas de stock.
+  Widget _buildCajaDiaria() {
+    final caja = (_serie?['cajaDiaria'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+    final alertas = (_serie?['alertasStock'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+
+    IconData iconoMetodo(String m) {
+      final s = m.toLowerCase();
+      if (s.contains('efectivo usd')) return Icons.payments;
+      if (s.contains('pago')) return Icons.phone_android;
+      if (s.contains('punto')) return Icons.credit_card;
+      return Icons.money;
+    }
+
+    String prefijoMetodo(String m) {
+      final s = m.toUpperCase();
+      return (s.contains('VES') || s.contains('MOVIL') || s.contains('VENTA'))
+          ? 'Bs. '
+          : '\$';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Caja del Día (por método de pago)',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: caja.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'Sin pagos registrados hoy.',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  )
+                : Column(
+                    children: caja
+                        .map(
+                          (c) => ListTile(
+                            dense: true,
+                            leading: Icon(
+                              iconoMetodo((c['metodo'] ?? '').toString()),
+                              color: Colors.blueAccent,
+                            ),
+                            title: Text(
+                              (c['metodo'] ?? '').toString(),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            trailing: Text(
+                              '${prefijoMetodo((c['metodo'] ?? '').toString())}${_moneda(c['monto'])}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+          ),
+        ),
+        if (alertas.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'Alertas de Stock Bajo',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            elevation: 2,
+            color: Colors.red.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                children: alertas
+                    .take(5)
+                    .map(
+                      (p) => ListTile(
+                        dense: true,
+                        leading: Icon(
+                          Icons.warning_amber,
+                          color: Colors.red.shade700,
+                        ),
+                        title: Text(
+                          (p['Nombre'] ?? '').toString(),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Stock: ${p['Stock_Actual']} (Mín: ${p['Stock_Minimo']})',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        onTap: () => _navegar(const EntradasScreen()),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -425,45 +882,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSubmenu() {
-    final modulos = <_ModuloItem>[
-      _ModuloItem(
-        'Punto de Venta (POS)',
-        Icons.point_of_sale,
-        Colors.blueAccent,
-        const PosScreen(),
-      ),
-      _ModuloItem(
-        'Inventario / Productos',
-        Icons.inventory_2,
-        Colors.amber.shade700,
-        const InventarioScreen(),
-      ),
-      _ModuloItem(
-        'Clientes',
-        Icons.people,
-        Colors.teal,
-        const ClientesScreen(),
-      ),
-      _ModuloItem(
-        'Proveedores',
-        Icons.local_shipping,
-        Colors.indigo,
-        const ProveedoresScreen(),
-      ),
-      _ModuloItem(
-        'Categorías',
-        Icons.category,
-        Colors.green,
-        const CategoriasScreen(),
-      ),
-      _ModuloItem(
-        'Entradas de Mercancía',
-        Icons.add_shopping_cart,
-        Colors.purple,
-        const EntradasScreen(),
-      ),
-    ];
-
     return GridView.count(
       crossAxisCount: _columnasSubmenu(),
       shrinkWrap: true,
@@ -471,38 +889,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.7,
-      children: modulos
-          .map(
-            (m) => Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => _navegar(m.pantalla),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(m.icon, size: 30, color: m.color),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        m.titulo,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
+      children: _modulosSistema.map((m) => _tarjetaModulo(m)).toList(),
+    );
+  }
+
+  /// Tarjeta numerada del módulo (misma fuente que el Drawer).
+  Widget _tarjetaModulo(_ModuloSistema m) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _abrirModulo(m),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              alignment: Alignment.topRight,
+              clipBehavior: Clip.none,
+              children: [
+                Icon(m.icon, size: 30, color: m.color),
+                Positioned(
+                  right: -14,
+                  top: -10,
+                  child: CircleAvatar(
+                    radius: 10,
+                    backgroundColor: m.color,
+                    child: Text(
+                      '${m.numero}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                m.titulo,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          )
-          .toList(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -534,28 +973,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text('Menú principal', style: TextStyle(color: Colors.white70)),
+                Text('Flujo operativo del negocio',
+                    style: TextStyle(color: Colors.white70)),
               ],
             ),
           ),
-          _drawerItem(Icons.point_of_sale, 'Punto de Venta', const PosScreen()),
-          _drawerItem(
-            Icons.inventory_2,
-            'Inventario',
-            const InventarioScreen(),
-          ),
-          _drawerItem(Icons.people, 'Clientes', const ClientesScreen()),
-          _drawerItem(
-            Icons.local_shipping,
-            'Proveedores',
-            const ProveedoresScreen(),
-          ),
-          _drawerItem(Icons.category, 'Categorías', const CategoriasScreen()),
-          _drawerItem(
-            Icons.add_shopping_cart,
-            'Entradas de Mercancía',
-            const EntradasScreen(),
-          ),
+          // Ítems generados desde la MISMA fuente que el Grid del Dashboard:
+          // números, títulos, iconos y destinos idénticos por construcción.
+          for (final seccion in const ['OPERACIÓN', 'ADMINISTRACIÓN']) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                seccion,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+            ..._modulosSistema
+                .where((m) => m.seccion == seccion)
+                .map(_drawerItem),
+          ],
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
@@ -570,13 +1011,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _drawerItem(IconData icon, String titulo, Widget pantalla) {
+  Widget _drawerItem(_ModuloSistema m) {
     return ListTile(
-      leading: Icon(icon),
-      title: Text(titulo),
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: m.color.withValues(alpha: 0.15),
+        child: Text(
+          '${m.numero}',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: m.color,
+          ),
+        ),
+      ),
+      title: Text(
+        m.titulo,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
       onTap: () {
-        Navigator.pop(context);
-        _navegar(pantalla);
+        Navigator.pop(context); // cierra el drawer
+        _abrirModulo(m);
       },
     );
   }
