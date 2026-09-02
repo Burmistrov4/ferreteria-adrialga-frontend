@@ -80,9 +80,23 @@ class FacturaDetalleDialog extends StatelessWidget {
               ),
             ),
             const Divider(),
-            _row('Subtotal:', '\$${f.subtotal.toStringAsFixed(2)}'),
+            _row('Base Imponible:', '\$${f.subtotal.toStringAsFixed(2)}'),
             _row('IVA (16%):', '\$${f.totalIva.toStringAsFixed(2)}'),
-            _row('TOTAL:', '\$${f.totalGeneral.toStringAsFixed(2)}', bold: true),
+            if (f.montoIgtf > 0)
+              _row(
+                'IGTF (3% div.):',
+                '\$${f.montoIgtf.toStringAsFixed(2)} USD'
+                '  (Bs. ${(f.montoIgtf * (f.tasaCambio ?? 0)).toStringAsFixed(2)})',
+              ),
+            _row(
+              'Tasa BCV histórica:',
+              'Bs. ${(f.tasaCambio ?? 0).toStringAsFixed(4)}',
+            ),
+            _row(
+              'TOTAL:',
+              '\$${f.totalGeneral.toStringAsFixed(2)}',
+              bold: true,
+            ),
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

@@ -37,12 +37,24 @@ class _CobroDialogState extends State<CobroDialog> {
   double get _montoPuntoVenta =>
       double.tryParse(_puntoVentaController.text) ?? 0.0;
 
+  // ── IGTF (3%): impuesto que se aplica EXCLUSIVAMENTE a los pagos en
+  // divisas extranjeras (aquí, el campo "Efectivo USD"). Se recalcula en
+  // tiempo real mientras el cajero ingresa el monto y se muestra su
+  // equivalencia en bolívares con la tasa BCV activa.
+  final double _igtfAliquota = 0.03;
+  double get _montoDivisa => _montoUsdEfectivo;
+  double get _igtfUSD => _montoDivisa * _igtfAliquota;
+  double get _igtfVES => _igtfUSD * widget.tasaCambio;
+
+  // El total a cobrar incluye el IGTF cuando hay pagos en divisas.
+  double get _cargoTotalUSD => widget.totalUSD + _igtfUSD;
+
   double get _totalRecibidoUSD =>
       _montoUsdEfectivo +
       ((_montoVesEfectivo + _montoPagoMovil + _montoPuntoVenta) /
           widget.tasaCambio);
 
-  double get _diferenciaUSD => _totalRecibidoUSD - widget.totalUSD;
+  double get _diferenciaUSD => _totalRecibidoUSD - _cargoTotalUSD;
   double get _diferenciaVES => _diferenciaUSD * widget.tasaCambio;
 
   bool get _pagoCompleto => _diferenciaUSD >= -0.01;
@@ -226,6 +238,58 @@ class _CobroDialogState extends State<CobroDialog> {
               ),
             ),
             const SizedBox(height: 16),
+            // Desglose IGTF en tiempo real (3% sobre pagos en divisas)
+            if (_montoDivisa > 0)
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade300, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.account_balance,
+                            color: Colors.orange, size: 18),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'IGTF 3% (pagos en divisas)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Base: \$${_montoDivisa.toStringAsFixed(2)} USD',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Text(
+                      'IGTF: \$${_igtfUSD.toStringAsFixed(2)} USD'
+                      '  =  Bs. ${_igtfVES.toStringAsFixed(2)} VES',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cargo total incl. IGTF: \$${_cargoTotalUSD.toStringAsFixed(2)} USD',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             // Bloque de Vuelto / Restante
             Container(
               padding: const EdgeInsets.all(12),
@@ -305,6 +369,9 @@ class _CobroDialogState extends State<CobroDialog> {
                               'vueltoVES': _diferenciaVES > 0
                                   ? _diferenciaVES
                                   : 0.0,
+                              'cargoTotalUSD': _cargoTotalUSD,
+                              'igtfUSD': _igtfUSD,
+                              'igtfVES': _igtfVES,
                               'detallesPago': {
                                 'efectivoUSD': _montoUsdEfectivo,
                                 'efectivoVES': _montoVesEfectivo,

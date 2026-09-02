@@ -411,10 +411,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _MetricaCard(
         icon: Icons.attach_money,
         color: Colors.green,
-        titulo: 'Ventas Totales',
-        valor: '\$${_moneda(ventas['montoTotal'])}',
+        titulo: 'Ventas Totales (VES)',
+        valor: 'Bs. ${_moneda(ventas['montoTotalBs'])}',
         descripcion:
-            '${_num(ventas['cantidadFacturas'])} facturas en el periodo seleccionado.',
+            '${_num(ventas['cantidadFacturas'])} facturas · equiv. \$${_moneda(ventas['montoTotal'])} USD',
         onTap: () => _navegar(const FacturasScreen()),
       ),
       _MetricaCard(
@@ -429,8 +429,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.receipt_long,
         color: Colors.blueAccent,
         titulo: 'Ticket Promedio',
-        valor: '\$${_moneda(ventas['ticketPromedio'])}',
-        descripcion: 'Venta total ÷ número de facturas.',
+        valor: 'Bs. ${_moneda(ventas['ticketPromedioBs'])}',
+        descripcion:
+            '\$${_moneda(ventas['ticketPromedio'])} USD por factura.',
         onTap: () => _navegar(const FacturasScreen()),
       ),
       _MetricaCard(
@@ -542,15 +543,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final maxMonto = serie.fold<double>(
       0,
       (max, f) {
-        final m = (f['monto'] as num? ?? 0).toDouble();
+        final m = (f['montoBs'] as num? ?? f['monto'] as num? ?? 0).toDouble();
         return m > max ? m : max;
       },
     );
 
     return Column(
       children: serie.map((f) {
-        final monto = (f['monto'] as num? ?? 0).toDouble();
-        final factor = maxMonto > 0 ? monto / maxMonto : 0.0;
+        final montoBs = (f['montoBs'] as num? ?? 0).toDouble();
+        final factor = maxMonto > 0 ? montoBs / maxMonto : 0.0;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(
@@ -574,9 +575,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(width: 8),
               SizedBox(
-                width: 90,
+                width: 110,
                 child: Text(
-                  '\$${_moneda(monto)}',
+                  'Bs. ${_moneda(montoBs)}',
                   textAlign: TextAlign.right,
                   style: const TextStyle(
                     fontSize: 11,
@@ -832,8 +833,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.shopping_cart,
         color: Colors.green,
         titulo: 'Ventas (Bs)',
-        valor: _moneda(resumen['montoTotalVentas']),
-        descripcion: 'Total facturado a la fecha (incluye IVA).',
+        valor: _moneda(resumen['montoTotalVentasBs']),
+        descripcion:  'Total facturado histórico en Bs (Σ USD × tasa BCV de cada venta), incluye IVA/IGTF.',
         onTap: () => _navegar(const FacturasScreen()),
       ),
       _MetricaCard(

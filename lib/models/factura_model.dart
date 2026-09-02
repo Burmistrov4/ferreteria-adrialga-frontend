@@ -5,6 +5,8 @@ class FacturaModel {
   final DateTime? fechaEmision;
   final double subtotal;
   final double totalIva;
+  final double montoIgtf;
+  final double? tasaCambio;
   final double totalGeneral;
   final String estatus;
   final int clienteId;
@@ -20,6 +22,8 @@ class FacturaModel {
     this.fechaEmision,
     required this.subtotal,
     required this.totalIva,
+    this.montoIgtf = 0.0,
+    this.tasaCambio,
     required this.totalGeneral,
     required this.estatus,
     required this.clienteId,
@@ -49,6 +53,8 @@ class FacturaModel {
       ),
       subtotal: _d(json['Subtotal'] ?? json['subtotal']),
       totalIva: _d(json['Total_IVA'] ?? json['totalIva']),
+      montoIgtf: _d(json['Monto_IGTF'] ?? json['montoIgtf']),
+      tasaCambio: _d(json['Tasa_Cambio'] ?? json['tasaCambio']),
       totalGeneral: _d(json['Total_General'] ?? json['totalGeneral']),
       estatus: _s(json['Estatus'] ?? json['estatus'] ?? 'Completada'),
       clienteId: _i(json['Cliente_ID'] ?? json['clienteId']),
