@@ -16,6 +16,27 @@ class FacturaPdfService {
 
   static String _fmt(double v) => v.toStringAsFixed(2);
 
+  /// Formatea con separador de miles y 2 decimales para montos en Bs.
+  static String _fmtMoneda(double v) {
+    final partes = v.toStringAsFixed(2).split('.');
+    final enteros = partes[0];
+    final buf = StringBuffer();
+    for (var i = 0; i < enteros.length; i++) {
+      if (i > 0 && (enteros.length - i) % 3 == 0) buf.write('.');
+      buf.write(enteros[i]);
+    }
+    return '${buf.toString()},${partes[1]}';
+  }
+
+  /// Tasa a usar para el comprobante: prioriza la tasa BCV HISTÓRICA
+  /// persistida en la factura; si no está disponible, usa la tasa actual
+  /// que se recibe como parámetro (fallback para facturas viejas sin dato).
+  static double _tasaPersistida(FacturaModel f, {double fallback = 0}) {
+    final historica = f.tasaCambio;
+    if (historica != null && historica > 0) return historica;
+    return fallback > 0 ? fallback : 0;
+  }
+
   static Future<Uint8List> _generar(
     FacturaModel f, {
     required double tasa,
@@ -151,19 +172,31 @@ class FacturaPdfService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  _filaTotal('Subtotal', _fmt(f.subtotal)),
+                  _filaTotal('Base Imponible', _fmt(f.subtotal)),
                   _filaTotal('IVA (16%)', _fmt(f.totalIva)),
+                  if (f.montoIgtf > 0)
+                    _filaTotal(
+                      'IGTF (3% divisas)',
+                      '${_fmt(f.montoIgtf)} USD',
+                    ),
                   pw.Divider(color: _azul),
-                  _filaTotal('TOTAL', _fmt(f.totalGeneral), bold: true),
+                  _filaTotal('TOTAL', '${_fmt(f.totalGeneral)} USD', bold: true),
                   pw.SizedBox(height: 6),
+                  // Tasa histórica (de la factura persistida). Si no está
+                  // disponible, cae al valor actual que se pasa como parámetro.
                   pw.Text(
-                    'Tasa BCV: ${tasa.toStringAsFixed(2)} Bs/\$',
+                    'Tasa BCV (histórica): ${_tasaPersistida(f, fallback: tasa).toStringAsFixed(4)} Bs/\$',
                     style: const pw.TextStyle(fontSize: 9, color: _gris),
                   ),
                   pw.Text(
-                    'Total en Bs: ${_fmt(f.totalGeneral * tasa)} Bs',
+                    'Total en Bs: ${_fmtMoneda(f.totalGeneral * _tasaPersistida(f, fallback: tasa))} Bs',
                     style: const pw.TextStyle(fontSize: 9, color: _gris),
                   ),
+                  if (f.montoIgtf > 0)
+                    pw.Text(
+                      'IGTF en Bs: ${_fmtMoneda(f.montoIgtf * _tasaPersistida(f, fallback: tasa))} Bs',
+                      style: const pw.TextStyle(fontSize: 9, color: _gris),
+                    ),
                 ],
               ),
             ),
