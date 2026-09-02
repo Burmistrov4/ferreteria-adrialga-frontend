@@ -348,9 +348,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 20),
               _buildCajaDiaria(),
               const SizedBox(height: 28),
-              // ── Resumen operativo existente ─────────────────────────────
-              _buildMetricas(),
-              const SizedBox(height: 28),
               const Text(
                 'Módulos del Sistema',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -445,7 +442,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
 
     return GridView.count(
-      crossAxisCount: _columnasMetricas(),
+      crossAxisCount: 4,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 12,
@@ -745,142 +742,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildMetricas() {
-    if (_isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 30),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
 
-    if (_error != null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red.shade700),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'No se pudieron cargar las métricas',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _error!,
-                    style: TextStyle(color: Colors.red.shade700, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: _cargarMetricas,
-                    child: const Text(
-                      'Reintentar',
-                      style: TextStyle(
-                        color: Colors.blueAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final resumen = (_metricas?['resumen'] as Map<String, dynamic>?) ?? {};
-    final alertas = (_metricas?['alertas'] as Map<String, dynamic>?) ?? {};
-    final conteoStockBajo = alertas['conteoStockBajo'] ?? 0;
-
-    final metricas = <Widget>[
-      _MetricaCard(
-        icon: Icons.inventory_2,
-        color: Colors.blue,
-        titulo: 'Productos',
-        valor: _num(resumen['totalProductos']),
-        descripcion:
-            'Artículos activos en el catálogo. Toque para ver inventario.',
-        onTap: () => _navegar(const InventarioScreen()),
-      ),
-      _MetricaCard(
-        icon: Icons.person,
-        color: Colors.teal,
-        titulo: 'Clientes',
-        valor: _num(resumen['totalClientes']),
-        descripcion: 'Clientes registrados para facturación.',
-        onTap: () => _navegar(const ClientesScreen()),
-      ),
-      _MetricaCard(
-        icon: Icons.local_shipping,
-        color: Colors.indigo,
-        titulo: 'Proveedores',
-        valor: _num(resumen['totalProveedores']),
-        descripcion: 'Proveedores activos para compras.',
-        onTap: () => _navegar(const ProveedoresScreen()),
-      ),
-      _MetricaCard(
-        icon: Icons.shopping_cart,
-        color: Colors.green,
-        titulo: 'Ventas (Bs)',
-        valor: _moneda(resumen['montoTotalVentasBs']),
-        descripcion:  'Total facturado histórico en Bs (Σ USD × tasa BCV de cada venta), incluye IVA/IGTF.',
-        onTap: () => _navegar(const FacturasScreen()),
-      ),
-      _MetricaCard(
-        icon: Icons.assignment,
-        color: Colors.orange,
-        titulo: 'Facturas',
-        valor: _num(resumen['totalFacturas']),
-        descripcion: 'Nº de ventas (facturas) registradas.',
-        onTap: () => _navegar(const FacturasScreen()),
-      ),
-      _MetricaCard(
-        icon: Icons.warning_amber,
-        color: Colors.red,
-        titulo: 'Stock bajo',
-        valor: _num(conteoStockBajo),
-        descripcion: 'Productos con stock ≤ mínimo. Reponga en Entradas.',
-        onTap: () => _navegar(const EntradasScreen()),
-      ),
-      _MetricaCard(
-        icon: Icons.call_received,
-        color: Colors.purple,
-        titulo: 'Entradas (Bs)',
-        valor: _moneda(resumen['montoTotalEntradas']),
-        descripcion: 'Valor de mercancía recibida por compras.',
-        onTap: () => _navegar(const EntradasScreen()),
-      ),
-    ];
-
-    return GridView.count(
-      crossAxisCount: _columnasMetricas(),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.6,
-      children: metricas,
-    );
-  }
-
-  int _columnasMetricas() {
-    final ancho = MediaQuery.of(context).size.width;
-    if (ancho >= 1200) return 4;
-    if (ancho >= 800) return 3;
-    if (ancho >= 600) return 2;
-    return 2;
-  }
 
   Widget _buildSubmenu() {
     return GridView.count(
@@ -890,12 +752,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.7,
-      children: _modulosSistema.map((m) => _tarjetaModulo(m)).toList(),
+      children: _modulosSistema
+          .map((m) => _tarjetaModulo(m, badge: _badgeForModule(m)))
+          .toList(),
     );
   }
 
   /// Tarjeta numerada del módulo (misma fuente que el Drawer).
-  Widget _tarjetaModulo(_ModuloSistema m) {
+  /// Muestra un badge contextual debajo del título cuando hay datos disponibles.
+  Widget _tarjetaModulo(_ModuloSistema m, {Widget? badge}) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -940,8 +805,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
+            if (badge != null) ...[
+              const SizedBox(height: 6),
+              badge,
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Devuelve un badge contextual por módulo basado en las métricas cargadas.
+  /// Retona null si no hay datos o el módulo no tiene badge asignado.
+  Widget? _badgeForModule(_ModuloSistema m) {
+    if (_isLoading || _error != null || _metricas == null) return null;
+    final resumen = (_metricas?['resumen'] as Map<String, dynamic>?) ?? {};
+    final alertas = (_metricas?['alertas'] as Map<String, dynamic>?) ?? {};
+
+    switch (m.numero) {
+      case 4: // Productos & Catálogo
+        return _badge('${resumen['totalProductos'] ?? 0} ítems', Colors.blue);
+      case 3: // Clientes
+        return _badge('${resumen['totalClientes'] ?? 0} reg.', Colors.teal);
+      case 6: // Proveedores
+        return _badge('${resumen['totalProveedores'] ?? 0} reg.', Colors.indigo);
+      case 2: // Facturas & Ventas
+        return _badge('${resumen['totalFacturas'] ?? 0} emitidas', Colors.green);
+      case 5: // Entradas & Inventario → alerta stock bajo
+        final stockBajo = (alertas['conteoStockBajo'] ?? 0) as int;
+        return stockBajo > 0 ? _badgeAlert(stockBajo) : null;
+      default:
+        return null;
+    }
+  }
+
+  /// Badge neutro con texto y color de acento.
+  Widget _badge(String texto, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  /// Badge de alerta rojo para stock bajo.
+  Widget _badgeAlert(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded, size: 11, color: Colors.white),
+          const SizedBox(width: 3),
+          Text(
+            '$count bajo stock',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
