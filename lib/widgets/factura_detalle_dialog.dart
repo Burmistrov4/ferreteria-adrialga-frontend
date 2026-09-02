@@ -61,7 +61,8 @@ class FacturaDetalleDialog extends StatelessWidget {
               child: SingleChildScrollView(
                 child: DataTable(
                   columnSpacing: 18,
-                  dataRowHeight: 32,
+                  dataRowMinHeight: 30,
+                  dataRowMaxHeight: 40,
                   columns: const [
                     DataColumn(label: Text('Producto')),
                     DataColumn(label: Text('Cant.')),

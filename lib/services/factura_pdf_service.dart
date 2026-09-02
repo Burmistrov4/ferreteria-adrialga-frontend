@@ -139,7 +139,7 @@ class FacturaPdfService {
             ),
           ),
           pw.SizedBox(height: 14),
-          pw.Table.fromTextArray(
+          pw.TableHelper.fromTextArray(
             headers: ['Código', 'Descripción', 'Cant.', 'P. Unit.', 'Subtotal (\$)'],
             data: f.detalles.map((d) {
               return [
