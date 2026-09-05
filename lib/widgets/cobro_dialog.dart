@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/api_service.dart';
+
 class CobroDialog extends StatefulWidget {
   final double totalUSD;
   final double tasaCambio;
@@ -360,15 +362,24 @@ class _CobroDialogState extends State<CobroDialog> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onPressed: _pagoCompleto
-                        ? () {
+                        ? () async {
+                            // Validar fondos en caja antes de procesar
+                            final vueltoUSD = _diferenciaUSD > 0 ? _diferenciaUSD : 0.0;
+                            final vueltoVES = _diferenciaVES > 0 ? _diferenciaVES : 0.0;
+                            
+                            if (vueltoUSD > 0 || vueltoVES > 0) {
+                              final puedeDarVuelto = await _verificarFondosCaja(
+                                vueltoUSD: vueltoUSD,
+                                vueltoVES: vueltoVES,
+                              );
+                              if (!puedeDarVuelto) return;
+                            }
+                            
+                            if (!context.mounted) return;
                             Navigator.of(context).pop({
                               'montoPagadoUSD': _totalRecibidoUSD,
-                              'vueltoUSD': _diferenciaUSD > 0
-                                  ? _diferenciaUSD
-                                  : 0.0,
-                              'vueltoVES': _diferenciaVES > 0
-                                  ? _diferenciaVES
-                                  : 0.0,
+                              'vueltoUSD': vueltoUSD,
+                              'vueltoVES': vueltoVES,
                               'cargoTotalUSD': _cargoTotalUSD,
                               'igtfUSD': _igtfUSD,
                               'igtfVES': _igtfVES,
@@ -397,6 +408,71 @@ class _CobroDialogState extends State<CobroDialog> {
         ),
       ),
     );
+  }
+
+  /// Verifica si hay fondos suficientes en caja para dar vuelto.
+  /// Retorna true si puede procesar, false si no hay fondos.
+  Future<bool> _verificarFondosCaja({
+    required double vueltoUSD,
+    required double vueltoVES,
+  }) async {
+    try {
+      final resultado = await ApiService.verificarFondosVuelto(
+        vueltoUSD: vueltoUSD,
+        vueltoVES: vueltoVES,
+        tasaCambio: widget.tasaCambio,
+      );
+      
+      final puedeProcesar = resultado['puedeProcesar'] as bool? ?? false;
+      
+      if (!puedeProcesar && mounted) {
+        final saldoUSD = double.tryParse(resultado['saldoUSD']?.toString() ?? '') ?? 0.0;
+        final saldoVES = double.tryParse(resultado['saldoVES']?.toString() ?? '') ?? 0.0;
+        final faltanteUSD = double.tryParse(resultado['faltanteUSD']?.toString() ?? '') ?? 0.0;
+        final faltanteVES = double.tryParse(resultado['faltanteVES']?.toString() ?? '') ?? 0.0;
+        
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 48),
+            title: const Text('Fondos Insuficientes en Caja'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('No hay saldo suficiente para dar el vuelto.'),
+                const SizedBox(height: 12),
+                Text('Saldo disponible:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('  • USD: \$${saldoUSD.toStringAsFixed(2)}'),
+                Text('  • VES: Bs. ${saldoVES.toStringAsFixed(2)}'),
+                if (faltanteUSD > 0 || faltanteVES > 0) ...[
+                  const SizedBox(height: 8),
+                  Text('Faltante:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                  if (faltanteUSD > 0) Text('  • USD: \$${faltanteUSD.toStringAsFixed(2)}', style: TextStyle(color: Colors.red)),
+                  if (faltanteVES > 0) Text('  • VES: Bs. ${faltanteVES.toStringAsFixed(2)}', style: TextStyle(color: Colors.red)),
+                ],
+                const SizedBox(height: 12),
+                const Text('Sugerencia: Solicite al cliente el monto exacto o use otro método de pago.',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('ENTENDIDO'),
+              ),
+            ],
+          ),
+        );
+      }
+      
+      return puedeProcesar;
+    } catch (e) {
+      // Si el endpoint no responde, permitir proceso (fail-open para no bloquear ventas)
+      // En producción, podría cambiarse a fail-close según política de riesgo
+      debugPrint('Error verificando fondos: $e');
+      return true;
+    }
   }
 
   Widget _buildInputField({

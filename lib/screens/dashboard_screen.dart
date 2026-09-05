@@ -462,7 +462,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Tarjetas KPI: Ventas Totales, Margen, Ticket Promedio y Valor Inventario.
+  /// Tarjetas KPI: Layout responsivo con 1-4 columnas según ancho de pantalla.
   Widget _buildKPIsFinancieros() {
     if (_cargandoSerie) {
       return const Center(
@@ -484,7 +484,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final rent = _serie?['rentabilidad'] as Map<String, dynamic>?;
     final pctRent = double.tryParse(rent?['porcentaje']?.toString() ?? '') ?? 0.0;
 
-    final kpis = <Widget>[
+    final kpis = <_MetricaCard>[
       _MetricaCard(
         icon: Icons.attach_money,
         color: Colors.green,
@@ -518,18 +518,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Valor Inventario',
         valor: '\$${_moneda(valorInv)}',
         descripcion: 'Capital invertido: Stock × Costo Promedio.',
-        onTap: () => _navegar(const InventarioScreen()),
+        onTap: () => _irAFacturas(),
       ),
     ];
 
-    return GridView.count(
-      crossAxisCount: 4,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.6,
-      children: kpis,
+    // Layout responsivo con LayoutBuilder
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final ancho = constraints.maxWidth;
+        int columnas;
+        double aspecto;
+        
+        if (ancho < 600) {
+          columnas = 1; // Móvil
+          aspecto = 2.8;
+        } else if (ancho < 900) {
+          columnas = 2; // Tablet pequeña
+          aspecto = 1.8;
+        } else if (ancho < 1200) {
+          columnas = 3; // Tablet grande
+          aspecto = 1.5;
+        } else {
+          columnas = 4; // Desktop
+          aspecto = 1.4;
+        }
+        
+        return GridView.count(
+          crossAxisCount: columnas,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: aspecto,
+          children: kpis,
+        );
+      },
     );
   }
 

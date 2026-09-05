@@ -23,11 +23,17 @@ class FacturaDetalleDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final f = factura;
+    final anchoPantalla = MediaQuery.of(context).size.width;
+    final esMovil = anchoPantalla < 600;
+    
     return Dialog(
+      insetPadding: esMovil 
+          ? const EdgeInsets.all(8)
+          : EdgeInsets.symmetric(horizontal: anchoPantalla * 0.1, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
-        width: 520,
-        padding: const EdgeInsets.all(16),
+        width: esMovil ? anchoPantalla : 520,
+        padding: EdgeInsets.all(esMovil ? 12 : 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -35,15 +41,22 @@ class FacturaDetalleDialog extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Detalle de Factura',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Detalle de Factura',
+                    style: TextStyle(
+                      fontSize: esMovil ? 16 : 18, 
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 Text(
                   f.numeroControl ?? 'FV-${f.facturaId}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
+                    fontSize: esMovil ? 12 : 14,
                   ),
                 ),
               ],
@@ -51,37 +64,40 @@ class FacturaDetalleDialog extends StatelessWidget {
             const Divider(),
             Text(
               'Cliente: ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
-              style: const TextStyle(fontSize: 13),
+              style: TextStyle(fontSize: esMovil ? 11 : 13),
             ),
             Text(
               'RIF/Cédula: ${f.clienteRif!.isNotEmpty ? f.clienteRif : "V-00000000"}',
-              style: const TextStyle(fontSize: 13),
+              style: TextStyle(fontSize: esMovil ? 11 : 13),
             ),
             Text(
               'Fecha: ${_fmtFecha(f.fechaEmision)} • Atendido por: ${f.usuarioNombre!.isNotEmpty ? f.usuarioNombre : "Administrador"}',
-              style: const TextStyle(fontSize: 13),
+              style: TextStyle(fontSize: esMovil ? 11 : 13),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: esMovil ? 6 : 10),
             Flexible(
               child: SingleChildScrollView(
-                child: DataTable(
-                  columnSpacing: 18,
-                  dataRowMinHeight: 30,
-                  dataRowMaxHeight: 40,
-                  columns: const [
-                    DataColumn(label: Text('Producto')),
-                    DataColumn(label: Text('Cant.')),
-                    DataColumn(label: Text('Precio')),
-                    DataColumn(label: Text('Subtotal')),
-                  ],
-                  rows: f.detalles.map((d) {
-                    return DataRow(cells: [
-                      DataCell(Text(d.productoNombre)),
-                      DataCell(Text('${d.cantidad}')),
-                      DataCell(Text('\$${d.precioUnitario.toStringAsFixed(2)}')),
-                      DataCell(Text('\$${d.subtotal.toStringAsFixed(2)}')),
-                    ]);
-                  }).toList(),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: esMovil ? 12 : 18,
+                    dataRowMinHeight: 30,
+                    dataRowMaxHeight: 40,
+                    columns: const [
+                      DataColumn(label: Text('Producto')),
+                      DataColumn(label: Text('Cant.')),
+                      DataColumn(label: Text('Precio')),
+                      DataColumn(label: Text('Subtotal')),
+                    ],
+                    rows: f.detalles.map((d) {
+                      return DataRow(cells: [
+                        DataCell(Text(d.productoNombre, style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                        DataCell(Text('${d.cantidad}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                        DataCell(Text('\$${d.precioUnitario.toStringAsFixed(2)}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                        DataCell(Text('\$${d.subtotal.toStringAsFixed(2)}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                      ]);
+                    }).toList(),
+                  ),
                 ),
               ),
             ),
@@ -120,31 +136,58 @@ class FacturaDetalleDialog extends StatelessWidget {
               bold: true,
             ),
             const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cerrar'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.save_alt, size: 18),
-                  onPressed: () => FacturaPdfService.guardarYVer(f, tasa: tasa),
-                  label: const Text('Guardar PDF'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
+            // Botones responsivos: en móvil se apilan
+            esMovil
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.save_alt, size: 18),
+                        onPressed: () => FacturaPdfService.guardarYVer(f, tasa: tasa),
+                        label: const Text('Guardar PDF'),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.print, size: 18),
+                        onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),
+                        label: const Text('Imprimir'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cerrar'),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cerrar'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.save_alt, size: 18),
+                        onPressed: () => FacturaPdfService.guardarYVer(f, tasa: tasa),
+                        label: const Text('Guardar PDF'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.print, size: 18),
+                        onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),
+                        label: const Text('Imprimir'),
+                      ),
+                    ],
                   ),
-                  icon: const Icon(Icons.print, size: 18),
-                  onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),
-                  label: const Text('Imprimir'),
-                ),
-              ],
-            ),
           ],
         ),
       ),

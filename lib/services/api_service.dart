@@ -4,14 +4,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
-import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/categoria_model.dart';
 import '../models/cliente_model.dart';
 import '../models/factura_model.dart';
 import '../models/producto_model.dart';
+import 'download_service.dart';
 
 class ApiService {
   // ─── Configuración de la URL base de la API ───────────────────────────────
@@ -551,9 +550,8 @@ class ApiService {
   }
 
   /// Exporta el libro diario de ventas y caja del período (auditoría fiscal).
-  /// Descarga el CSV del backend, lo guarda en Documentos y lo abre.
-  /// Retorna la ruta del archivo generado.
-  static Future<String> exportarLibroDiarioCsv(String periodo) async {
+  /// Compatible con Web (descarga vía Blob/AnchorElement) y Mobile/Desktop (archivo local).
+  static Future<String?> exportarLibroDiarioCsv(String periodo) async {
     final response = await http
         .get(
           Uri.parse('$baseUrl/dashboard/exportar?periodo=$periodo&formato=csv'),
@@ -563,12 +561,20 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Error al exportar el libro diario (HTTP ${response.statusCode})');
     }
-    final dir = await getApplicationDocumentsDirectory();
+    
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File('${dir.path}/libro_diario_${periodo}_$timestamp.csv');
-    await file.writeAsBytes(response.bodyBytes, flush: true);
-    await OpenFile.open(file.path);
-    return file.path;
+    final filename = 'libro_diario_${periodo}_$timestamp.csv';
+    
+    // DownloadService maneja automáticamente Web vs Mobile/Desktop
+    // usando conditional imports (dart.library.html / dart.library.io)
+    await DownloadService.downloadFile(
+      bytes: response.bodyBytes,
+      filename: filename,
+      mimeType: 'text/csv;charset=utf-8',
+    );
+    
+    // En Mobile/Desktop retorna indicador de éxito
+    return filename;
   }
 
   // --- FACTURACIÓN (POS) ---
@@ -649,6 +655,29 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
     throw Exception('Error al calcular patrimonio operativo');
+  }
+
+  /// Verifica si hay fondos suficientes en caja para dar vuelto.
+  /// Retorna { puedeProcesar: bool, saldoUSD: double, saldoVES: double, faltanteUSD: double, faltanteVES: double }
+  static Future<Map<String, dynamic>> verificarFondosVuelto({
+    required double vueltoUSD,
+    required double vueltoVES,
+    required double tasaCambio,
+  }) async {
+    final params = {
+      'montoUSD': vueltoUSD.toString(),
+      'montoVES': vueltoVES.toString(),
+      'tasaCambio': tasaCambio.toString(),
+    };
+    final uri = Uri.parse('$baseUrl/tesoreria/verificar-fondos')
+        .replace(queryParameters: params);
+    final response = await http
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Error al verificar fondos en caja');
   }
 
   /// Obtiene la lista de cuentas por pagar pendientes.

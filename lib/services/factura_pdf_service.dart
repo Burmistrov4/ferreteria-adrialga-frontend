@@ -1,13 +1,11 @@
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/factura_model.dart';
+import 'download_service.dart';
 
 /// Genera, imprime y guarda facturas en formato PDF.
 class FacturaPdfService {
@@ -298,16 +296,21 @@ class FacturaPdfService {
     );
   }
 
-  /// Guarda el PDF en Documentos y lo abre con la app por defecto.
+  /// Guarda el PDF y lo abre/descarga según la plataforma.
+  /// En Web: descarga directa vía Blob/AnchorElement.
+  /// En Mobile/Desktop: guarda en Documentos y abre con app por defecto.
   static Future<void> guardarYVer(
     FacturaModel f, {
     required double tasa,
   }) async {
     final bytes = await _generar(f, tasa: tasa);
-    final dir = await getApplicationDocumentsDirectory();
-    final file =
-        File('${dir.path}/factura_${f.numeroControl ?? f.facturaId}.pdf');
-    await file.writeAsBytes(bytes);
-    await OpenFile.open(file.path);
+    final filename = 'factura_${f.numeroControl ?? f.facturaId}.pdf';
+    
+    // DownloadService usa conditional imports para Web vs Mobile/Desktop
+    await DownloadService.downloadFile(
+      bytes: bytes,
+      filename: filename,
+      mimeType: 'application/pdf',
+    );
   }
 }
