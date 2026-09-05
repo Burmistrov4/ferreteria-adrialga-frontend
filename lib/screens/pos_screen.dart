@@ -212,7 +212,7 @@ class _PosScreenState extends State<PosScreen> {
                 children: [
                   Text(
                     _tasaEsBCV
-                        ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(2)} Bs'
+                        ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(4)} Bs'
                         : 'Tasa BCV: Sin conexión',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
@@ -350,7 +350,18 @@ class _PosScreenState extends State<PosScreen> {
           Expanded(
             flex: 2,
             child: Container(
-              color: Colors.grey.shade50,
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E293B)
+                    : Colors.grey.shade50,
+                border: Border(
+                  left: BorderSide(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF334155)
+                        : Colors.grey.shade200,
+                  ),
+                ),
+              ),
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

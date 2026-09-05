@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/categoria_model.dart';
@@ -191,6 +193,26 @@ class ApiService {
     }
   }
 
+  /// Devuelve los últimos [limit] clientes registrados (por orden de
+  /// registro descendente) para el autoload del selector de clientes del POS.
+  static Future<List<ClienteModel>> getUltimosClientes([int limit = 10]) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/clientes?limit=$limit'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => ClienteModel.fromJson(json)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   static Future<List<ClienteModel>> getClientes([String? query]) async {
     final uri = Uri.parse(
       query == null || query.trim().isEmpty
@@ -266,6 +288,35 @@ class ApiService {
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Crea una categoría y devuelve el modelo recién creado (`null` si falla).
+  /// Reutilizado por el diálogo de producto para crear categorías "in‑line"
+  /// sin salir del formulario y seleccionarlas automáticamente.
+  static Future<CategoriaModel?> createCategoriaConRetorno(
+    String nombre,
+    String descripcion,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/categorias'),
+            headers: _headers,
+            body: jsonEncode({'Nombre': nombre, 'Descripcion': descripcion}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final dynamic data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          return CategoriaModel.fromJson(data);
+        }
+        final catId = (data as num?)?.toInt();
+        if (catId != null) return CategoriaModel(categoriaId: catId, nombreCategoria: nombre, descripcion: descripcion);
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -499,6 +550,27 @@ class ApiService {
     );
   }
 
+  /// Exporta el libro diario de ventas y caja del período (auditoría fiscal).
+  /// Descarga el CSV del backend, lo guarda en Documentos y lo abre.
+  /// Retorna la ruta del archivo generado.
+  static Future<String> exportarLibroDiarioCsv(String periodo) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/dashboard/exportar?periodo=$periodo&formato=csv'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw Exception('Error al exportar el libro diario (HTTP ${response.statusCode})');
+    }
+    final dir = await getApplicationDocumentsDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${dir.path}/libro_diario_${periodo}_$timestamp.csv');
+    await file.writeAsBytes(response.bodyBytes, flush: true);
+    await OpenFile.open(file.path);
+    return file.path;
+  }
+
   // --- FACTURACIÓN (POS) ---
   static Future<Map<String, dynamic>> createFactura(
     Map<String, dynamic> facturaData,
@@ -520,15 +592,96 @@ class ApiService {
     }
   }
 
-  /// Obtiene todas las facturas emitidas (para el registro de facturas).
-  static Future<List<FacturaModel>> getFacturas() async {
+  /// Obtiene las facturas emitidas (para el registro de facturas).
+  ///
+  /// Filtro temporal opcional (excluyentes):
+  ///  - [periodo]: 'hoy' | 'semana' | 'mes' | 'anio' (rangos relativos).
+  ///  - [desde]/[hasta]: rango personalizado (se envía solo la fecha; la
+  ///    demarcación exacta a 00:00:00 / 23:59:59.999 la hace el backend).
+  static Future<List<FacturaModel>> getFacturas({
+    String? periodo,
+    DateTime? desde,
+    DateTime? hasta,
+  }) async {
+    final params = <String, String>{};
+    if (desde != null && hasta != null) {
+      String iso(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      params['desde'] = iso(desde);
+      params['hasta'] = iso(hasta);
+    } else if (periodo != null && periodo.isNotEmpty) {
+      params['periodo'] = periodo;
+    }
+    final uri = params.isEmpty
+        ? Uri.parse('$baseUrl/facturas')
+        : Uri.parse('$baseUrl/facturas').replace(queryParameters: params);
     final response = await http
-        .get(Uri.parse('$baseUrl/facturas'), headers: _headers)
+        .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => FacturaModel.fromJson(json)).toList();
     }
     throw Exception('Error al cargar facturas');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TESORERÍA, CAJA Y CUENTAS POR PAGAR (Fase 5)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Obtiene el saldo actual de caja y resumen de movimientos.
+  static Future<Map<String, dynamic>> getTesoreriaSaldo() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/tesoreria/saldo'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Error al consultar saldo de caja');
+  }
+
+  /// Calcula el patrimonio operativo: Caja + Σ(Stock × CostoPromedio).
+  static Future<Map<String, dynamic>> getPatrimonioOperativo() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/tesoreria/patrimonio'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Error al calcular patrimonio operativo');
+  }
+
+  /// Obtiene la lista de cuentas por pagar pendientes.
+  static Future<List<dynamic>> getCuentasPorPagar() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/tesoreria/cuentas-pagar'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as List<dynamic>;
+    }
+    throw Exception('Error al cargar cuentas por pagar');
+  }
+
+  /// Registra un abono (parcial o total) a una cuenta por pagar.
+  static Future<Map<String, dynamic>> abonarCuentaPorPagar(
+    int cxpId,
+    double monto,
+    String metodoPago,
+  ) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/tesoreria/cuentas-pagar/abonar'),
+          headers: _headers,
+          body: jsonEncode({
+            'cxp_id': cxpId,
+            'monto': monto,
+            'metodo_pago': metodoPago,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return {'success': true, ...jsonDecode(response.body)};
+    }
+    return {'success': false, 'error': response.body};
   }
 }

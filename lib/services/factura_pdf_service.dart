@@ -165,6 +165,43 @@ class FacturaPdfService {
             },
           ),
           pw.SizedBox(height: 14),
+          if (f.pagos.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            pw.Text(
+              'Forma de Pago / Desglose de Métodos',
+              style: pw.TextStyle(
+                fontSize: 12,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: ['Método', 'Monto', 'Equiv. Bs', 'IGTF 3%'],
+              data: f.pagos.map((p) {
+                final bs = p.enBolivares(_tasaPersistida(f, fallback: tasa));
+                return [
+                  p.metodo,
+                  p.esDivisa
+                      ? '${_fmt(p.monto)} USD'
+                      : '${_fmtMoneda(p.monto)} Bs',
+                  '${_fmtMoneda(bs)} Bs',
+                  p.esDivisa ? 'Sí' : 'No (exento)',
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+              ),
+              headerDecoration: const pw.BoxDecoration(color: _gris),
+              cellStyle: const pw.TextStyle(fontSize: 10),
+              cellAlignments: {
+                0: pw.Alignment.centerLeft,
+                1: pw.Alignment.centerRight,
+                2: pw.Alignment.centerRight,
+                3: pw.Alignment.centerLeft,
+              },
+            ),
+          ],
           pw.Align(
             alignment: pw.Alignment.centerRight,
             child: pw.Container(
@@ -246,7 +283,10 @@ class FacturaPdfService {
     if (dt == null) return '';
     final d = dt.day.toString().padLeft(2, '0');
     final m = dt.month.toString().padLeft(2, '0');
-    return '$d/$m/${dt.year}';
+    final h = dt.hour.toString().padLeft(2, '0');
+    final mi = dt.minute.toString().padLeft(2, '0');
+    final s = dt.second.toString().padLeft(2, '0');
+    return '$d/$m/${dt.year} $h:$mi:$s';
   }
 
   /// Abre el diálogo de impresión del sistema.

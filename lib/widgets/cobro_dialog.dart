@@ -109,8 +109,8 @@ class _CobroDialogState extends State<CobroDialog> {
                   avatar: const Icon(Icons.currency_exchange, size: 16),
                   label: Text(
                     widget.tasaEsBCV == true
-                        ? 'Tasa BCV: ${widget.tasaCambio.toStringAsFixed(2)} Bs/\$'
-                        : 'Tasa: ${widget.tasaCambio.toStringAsFixed(2)} Bs/\$ (respaldo)',
+                        ? 'Tasa BCV: ${widget.tasaCambio.toStringAsFixed(4)} Bs/\$'
+                        : 'Tasa: ${widget.tasaCambio.toStringAsFixed(4)} Bs/\$ (respaldo)',
                   ),
                   backgroundColor:
                       (widget.tasaEsBCV == true)

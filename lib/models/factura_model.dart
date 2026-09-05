@@ -15,6 +15,7 @@ class FacturaModel {
   final String? clienteRif;
   final String? usuarioNombre;
   final List<DetalleFacturaModel> detalles;
+  final List<PagoFacturaModel> pagos;
 
   FacturaModel({
     required this.facturaId,
@@ -32,6 +33,7 @@ class FacturaModel {
     this.clienteRif,
     this.usuarioNombre,
     this.detalles = const [],
+    this.pagos = const [],
   });
 
   static double _d(dynamic v) =>
@@ -77,6 +79,13 @@ class FacturaModel {
       detalles: detallesRaw
           .map((d) => DetalleFacturaModel.fromJson(d))
           .toList(),
+      pagos:
+          ((json['pagos'] ?? json['Pagos']) as List<dynamic>?)
+              ?.map(
+                (e) => PagoFacturaModel.fromJson(e as Map<String, dynamic>),
+              )
+              .toList() ??
+          [],
     );
   }
 }
@@ -124,7 +133,52 @@ class DetalleFacturaModel {
       precioUnitario: _d(
         json['Precio_Unitario'] ?? json['precioUnitario'] ?? json['precio'],
       ),
-      subtotal: _d(json['Subtotal'] ?? json['subtotal']),
+      subtotal: _d(
+        json['Subtotal'] ?? json['subtotal'] ?? json['sub_total'],
+      ),
     );
+  }
+}
+
+/// Registro de un método de pago aplicado a una factura (multipago).
+/// `monto` puede estar en USD (si `esDivisa` es true) o en Bolívares.
+/// Base del IGTF 3%: únicamente los pagos en divisas extranjeras.
+class PagoFacturaModel {
+  final String metodo;
+  final double monto;
+  final String? referencia;
+  final bool esDivisa;
+  final double? tasa;
+
+  PagoFacturaModel({
+    required this.metodo,
+    required this.monto,
+    this.referencia,
+    this.esDivisa = false,
+    this.tasa,
+  });
+
+  static double _d(dynamic v) =>
+      (v == null) ? 0.0 : double.tryParse(v.toString()) ?? 0.0;
+  static String _s(dynamic v) => (v ?? '').toString();
+
+  factory PagoFacturaModel.fromJson(Map<String, dynamic> json) {
+    final tasaRaw = json['Tasa_Cambio'] ?? json['tasaCambio'] ?? json['tasa'];
+    return PagoFacturaModel(
+      metodo: _s(
+        json['Metodo_Pago'] ?? json['metodo'] ?? json['metodoPago'] ?? '',
+      ),
+      monto: _d(json['Monto'] ?? json['monto']),
+      referencia: _s(json['Referencia'] ?? json['referencia']),
+      esDivisa: (json['Es_Divisa'] ?? json['esDivisa'] ?? false) == true,
+      tasa: tasaRaw == null ? null : _d(tasaRaw),
+    );
+  }
+
+  /// Equivalente en Bolívares: si ya está en Bs se devuelve el monto;
+  /// si es divisa se convierte con su tasa de cambio (o la pasada por fallback).
+  double enBolivares(double tasaFallback) {
+    final t = (tasa != null && tasa! > 0) ? tasa! : tasaFallback;
+    return esDivisa ? monto * t : monto;
   }
 }

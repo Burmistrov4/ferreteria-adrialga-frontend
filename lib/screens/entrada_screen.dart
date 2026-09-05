@@ -20,6 +20,7 @@ class _EntradasScreenState extends State<EntradasScreen> {
   List<dynamic> _proveedores = [];
   dynamic _proveedorSeleccionado;
   bool _cargandoProveedores = true;
+  String _formaPago = 'Contado'; // 'Contado' | 'Credito'
 
   @override
   void initState() {
@@ -114,6 +115,7 @@ class _EntradasScreenState extends State<EntradasScreen> {
     final data = {
       'Numero_Nota': _generarNumeroNota(),
       'Proveedor_ID': proveedorMap['Proveedor_ID'],
+      'Forma_Pago': _formaPago,
       'detalles': [
         {
           'Producto_ID': _productoSeleccionado!.productoId,
@@ -175,7 +177,7 @@ class _EntradasScreenState extends State<EntradasScreen> {
                 ),
                 const SizedBox(height: 20),
                 DropdownButtonFormField<ProductoModel>(
-                  value: _productoSeleccionado,
+                  initialValue: _productoSeleccionado,
                   decoration: const InputDecoration(
                     labelText: 'Seleccionar Producto',
                     border: OutlineInputBorder(),
@@ -199,7 +201,7 @@ class _EntradasScreenState extends State<EntradasScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<dynamic>(
-                  value: _proveedorSeleccionado,
+                  initialValue: _proveedorSeleccionado,
                   decoration: const InputDecoration(
                     labelText: 'Proveedor',
                     border: OutlineInputBorder(),
@@ -218,6 +220,41 @@ class _EntradasScreenState extends State<EntradasScreen> {
                   hint: _cargandoProveedores
                       ? const Text('Cargando proveedores...')
                       : const Text('Seleccione un proveedor'),
+                ),
+                const SizedBox(height: 16),
+                // Selector de Forma de Pago (Contado / Crédito)
+                Row(
+                  children: [
+                    const Icon(Icons.payment, size: 20, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Forma de Pago:',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment<String>(
+                            value: 'Contado',
+                            label: Text('Contado'),
+                            icon: Icon(Icons.money, size: 18),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'Credito',
+                            label: Text('Crédito'),
+                            icon: Icon(Icons.credit_card, size: 18),
+                          ),
+                        ],
+                        selected: {_formaPago},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          setState(() {
+                            _formaPago = newSelection.first;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -245,10 +282,40 @@ class _EntradasScreenState extends State<EntradasScreen> {
                     icon: const Icon(Icons.add_shopping_cart),
                     label: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Registrar Entrada'),
+                        : Text(_formaPago == 'Contado'
+                            ? 'Registrar Entrada (Contado)'
+                            : 'Registrar Entrada (Crédito)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _formaPago == 'Contado'
+                          ? Colors.green
+                          : Colors.orange,
+                    ),
                     onPressed: _isLoading ? null : _registrarEntrada,
                   ),
                 ),
+                if (_formaPago == 'Credito') ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'En crédito: se registrará una cuenta por pagar al proveedor. No afecta caja.',
+                            style: TextStyle(fontSize: 12, color: Colors.orange),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

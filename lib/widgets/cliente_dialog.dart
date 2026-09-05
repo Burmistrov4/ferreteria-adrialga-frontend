@@ -24,7 +24,19 @@ class _ClienteDialogState extends State<ClienteDialog>
   // Búsqueda flexible en tiempo real (nombre, RIF o cédula) con debounce
   // de 350 ms para no golpear la API en cada tecla.
   List<ClienteModel> _resultados = [];
+  // Últimos clientes precargados al abrir el diálogo (autoload Fase 2): la
+  // lista nunca inicia vacía y se restaura cuando se limpia la búsqueda.
+  List<ClienteModel> _recientes = [];
+  bool _mostrandoRecientes = true;
   Timer? _debounce;
+
+  // Naturaleza del documento: 'cedula' (Persona Natural) o 'rif' (Jurídico /
+  // Pasaporte). El dropdown de prefijos se filtra según esta selección.
+  String _grupoDoc = 'cedula';
+  static const Map<String, List<String>> _prefijosPorGrupo = {
+    'cedula': ['V', 'E'],
+    'rif': ['J', 'G', 'P'],
+  };
 
   String _tipoDoc = 'V';
   final _numDocController = TextEditingController();
@@ -41,8 +53,13 @@ class _ClienteDialogState extends State<ClienteDialog>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
 
+    _cargarRecientes();
+
     if (widget.cliente != null) {
       _tipoDoc = widget.cliente!.tipoDocumento;
+      _grupoDoc = (_prefijosPorGrupo['cedula']!.contains(_tipoDoc))
+          ? 'cedula'
+          : 'rif';
       _numDocController.text = widget.cliente!.numDocumento;
       _nombreController.text = widget.cliente!.nombreRazonSocial;
       _direccionController.text = widget.cliente!.direccion ?? '';
@@ -65,15 +82,32 @@ class _ClienteDialogState extends State<ClienteDialog>
     super.dispose();
   }
 
+  /// Autoload: carga los últimos 10 clientes registrados para que la lista
+  /// no inicie vacía al abrir el diálogo.
+  Future<void> _cargarRecientes() async {
+    final recientes = await ApiService.getUltimosClientes(10);
+    if (!mounted) return;
+    setState(() {
+      _recientes = recientes;
+      // Solo se muestran como autoload si aún no hay búsqueda activa.
+      if (_searchDocController.text.trim().isEmpty) {
+        _resultados = recientes;
+        _mostrandoRecientes = true;
+      }
+    });
+  }
+
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     if (value.trim().isEmpty) {
       setState(() {
-        _resultados = [];
+        _resultados = _recientes;
+        _mostrandoRecientes = true;
         _isSearching = false;
       });
       return;
     }
+    _mostrandoRecientes = false;
     _debounce = Timer(const Duration(milliseconds: 350), _buscarClienteLocal);
   }
 
@@ -262,12 +296,24 @@ class _ClienteDialogState extends State<ClienteDialog>
                           onSubmitted: (_) => _buscarClienteLocal(),
                         ),
                         const SizedBox(height: 12),
+                        if (_mostrandoRecientes)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Últimos clientes registrados',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
                         Expanded(
                           child: _resultados.isEmpty
                               ? Center(
                                   child: Text(
                                     _searchDocController.text.trim().isEmpty
-                                        ? 'Escriba para buscar clientes...'
+                                        ? 'Aún no hay clientes registrados.'
                                         : 'Sin coincidencias. Use el registro SENIAT o Manual.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: Colors.grey[600]),
@@ -319,15 +365,41 @@ class _ClienteDialogState extends State<ClienteDialog>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                              value: 'cedula',
+                              label: Text('Cédula (Natural)'),
+                              icon: Icon(Icons.person),
+                            ),
+                            ButtonSegment(
+                              value: 'rif',
+                              label: Text('RIF / Pasaporte'),
+                              icon: Icon(Icons.business),
+                            ),
+                          ],
+                          selected: {_grupoDoc},
+                          onSelectionChanged: (seleccion) {
+                            setState(() {
+                              _grupoDoc = seleccion.first;
+                              // El primer prefijo del grupo pasa a estar activo.
+                              _tipoDoc = _prefijosPorGrupo[_grupoDoc]!.first;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             DropdownButton<String>(
                               value: _tipoDoc,
-                              items: ['V', 'E', 'J', 'G', 'P']
+                              hint: Text(
+                                _grupoDoc == 'cedula' ? 'V- / E-' : 'J- / G- / P-',
+                              ),
+                              items: _prefijosPorGrupo[_grupoDoc]!
                                   .map(
                                     (t) => DropdownMenuItem(
                                       value: t,
-                                      child: Text(t),
+                                      child: Text('$t-'),
                                     ),
                                   )
                                   .toList(),

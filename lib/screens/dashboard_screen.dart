@@ -7,6 +7,7 @@ import 'proveedores_screen.dart';
 import 'entrada_screen.dart';
 import 'facturas_screen.dart';
 import 'login_screen.dart';
+import 'finanzas_screen.dart';
 import '../services/api_service.dart';
 
 import 'configuracion_screen.dart';
@@ -46,20 +47,22 @@ class _ModuloSistema {
 const List<_ModuloSistema> _modulosSistema = [
   _ModuloSistema(1, 'Ventas / POS', 'OPERACIÓN', Icons.point_of_sale,
       Colors.blueAccent, PosScreen()),
-  _ModuloSistema(2, 'Facturas & Ventas', 'OPERACIÓN', Icons.receipt_long,
+  _ModuloSistema(2, 'Facturas', 'OPERACIÓN', Icons.receipt_long,
       Colors.green, FacturasScreen()),
   _ModuloSistema(3, 'Clientes', 'OPERACIÓN', Icons.people, Colors.teal,
       ClientesScreen()),
   _ModuloSistema(
-      4, 'Productos & Catálogo', 'OPERACIÓN', Icons.inventory_2,
+      4, 'Productos', 'OPERACIÓN', Icons.inventory_2,
       Color(0xFFF59E0B), InventarioScreen()),
-  _ModuloSistema(5, 'Entradas & Inventario', 'OPERACIÓN',
+  _ModuloSistema(5, 'Entradas', 'OPERACIÓN',
       Icons.add_shopping_cart, Colors.purple, EntradasScreen()),
   _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
       Colors.indigo, ProveedoresScreen()),
-  _ModuloSistema(7, 'Métricas & Reportes', 'ADMINISTRACIÓN', Icons.insights,
-      Colors.deepOrange, null), // scroll al panel financiero
-  _ModuloSistema(8, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
+  _ModuloSistema(7, 'Métricas Profundas', 'ADMINISTRACIÓN', Icons.insights,
+      Colors.deepOrange, null),
+  _ModuloSistema(8, 'Finanzas & Caja', 'ADMINISTRACIÓN',
+      Icons.account_balance_wallet, Color(0xFF8B5CF6), FinanzasScreen()),
+  _ModuloSistema(9, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
       Colors.blueGrey, ConfiguracionScreen()),
 ];
 
@@ -237,6 +240,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Navegación cruzada Dashboard → Facturas: abre el registro de facturas
+  /// con el filtro temporal actualmente seleccionado en el dashboard.
+  Future<void> _irAFacturas() =>
+      _navegar(FacturasScreen(periodoInicial: _periodo));
+
   Future<void> _navegar(Widget pantalla) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => pantalla));
     // Al regresar de un módulo se recargan las métricas para reflejar cambios.
@@ -244,14 +252,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _cargarSerie();
   }
 
-  Future<void> _cargarSerie() async {
+  /// Caché SWR por clave de período: al alternar tarjetas se sirve el dato
+  /// cacheado con latencia cero y se revalida en segundo plano.
+  final Map<String, Map<String, dynamic>> _cacheSeries = {};
+
+  /// Selecciona un período: respuesta inmediata desde caché (si existe),
+  /// luego revalidación silenciosa contra la API.
+  void _seleccionarPeriodo(String p) {
+    if (_periodo == p) return;
+    final cache = _cacheSeries[p];
     setState(() {
-      _cargandoSerie = true;
-      _errorSerie = null;
+      _periodo = p;
+      if (cache != null) {
+        _serie = cache;
+        _cargandoSerie = false;
+        _errorSerie = null;
+      }
     });
+    _cargarSerie(silencioso: cache != null);
+  }
+
+  Future<void> _cargarSerie({bool silencioso = false}) async {
+    if (!silencioso) {
+      setState(() {
+        _cargandoSerie = true;
+        _errorSerie = null;
+      });
+    }
     try {
-      final data = await ApiService.getSerieFinanciera(_periodo);
-      if (mounted) setState(() { _serie = data; _cargandoSerie = false; });
+      final periodoSolicitado = _periodo;
+      final data = await ApiService.getSerieFinanciera(periodoSolicitado);
+      _cacheSeries[periodoSolicitado] = data;
+      if (mounted && _periodo == periodoSolicitado) {
+        setState(() { _serie = data; _cargandoSerie = false; });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -290,7 +324,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   Text(
                     _tasaEsBCV
-                        ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(2)} Bs/usd'
+                        ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(4)} Bs/usd'
                         : 'Tasa BCV: Sin conexión',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
@@ -340,11 +374,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildEncabezado(),
               const SizedBox(height: 20),
               // ── Sección financiera (Fase 3) ─────────────────────────────
-              _buildSelectorPeriodo(),
+              // Control ÚNICO de período: las tarjetas seleccionan el período
+              // (actualizan la serie) y navegan a Facturas con ese filtro.
+              _buildTarjetasPeriodo(),
               const SizedBox(height: 12),
               _buildKPIsFinancieros(),
+              const SizedBox(height: 12),
+              _buildBotonExportar(),
               const SizedBox(height: 20),
               _buildTendenciaVentas(),
+              const SizedBox(height: 20),
+              _buildTopProductos(),
               const SizedBox(height: 20),
               _buildCajaDiaria(),
               const SizedBox(height: 28),
@@ -363,27 +403,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ═══════════════════ SECCIÓN FINANCIERA (Fase 3) ═══════════════════
 
-  /// Selector temporal: Hoy / Esta Semana / Este Mes / Este Año.
-  Widget _buildSelectorPeriodo() {
-    return Wrap(
-      spacing: 8,
-      children: _periodos.map((p) {
-        final seleccionado = _periodo == p.$1;
-        return ChoiceChip(
-          label: Text(p.$2),
-          selected: seleccionado,
-          selectedColor: Colors.blueAccent,
-          labelStyle: TextStyle(
-            color: seleccionado ? Colors.white : Colors.grey[800],
-            fontWeight: seleccionado ? FontWeight.bold : FontWeight.normal,
-          ),
-          onSelected: (_) {
-            setState(() => _periodo = p.$1);
-            _cargarSerie();
-          },
-        );
-      }).toList(),
+  /// Selector de período (Hoy / Semana / Mes / Año) con separación de
+  /// intención: tocar la tarjeta SOLO cambia las métricas (caché SWR,
+  /// respuesta inmediata + revalidación en segundo plano); navegar a
+  /// Facturas exige el tap explícito en el botón pop-up "Ver Facturas"
+  /// que emerge con rebote cuando la tarjeta está activa.
+  Widget _buildTarjetasPeriodo() {
+    return SizedBox(
+      height: 108,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _periodos.map((p) {
+          return Expanded(
+            child: _TarjetaPeriodo(
+              etiqueta: p.$2,
+              seleccionada: _periodo == p.$1,
+              onSeleccionar: () => _seleccionarPeriodo(p.$1),
+              onVerFacturas: () =>
+                  _navegar(FacturasScreen(periodoInicial: p.$1)),
+            ),
+          );
+        }).toList(),
+      ),
     );
+  }
+
+  /// Botón de exportación del libro diario (auditoría fiscal local).
+  /// Genera un CSV con facturas, desglose fiscal, tasa BCV y métodos de pago
+  /// del período activo, lo guarda en Documentos y lo abre con la app asociada.
+  Widget _buildBotonExportar() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.file_download, size: 18),
+        label: const Text('Exportar Libro Diario (CSV)'),
+        onPressed: _exportarLibroDiario,
+      ),
+    );
+  }
+
+  Future<void> _exportarLibroDiario() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Generando libro diario...')),
+    );
+    try {
+      final ruta = await ApiService.exportarLibroDiarioCsv(_periodo);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Libro diario exportado: $ruta')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al exportar: $e')),
+        );
+      }
+    }
   }
 
   /// Tarjetas KPI: Ventas Totales, Margen, Ticket Promedio y Valor Inventario.
@@ -401,8 +477,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final ventas = (_serie?['ventas'] as Map<String, dynamic>?) ?? {};
-    final margen = (_serie?['margenGanancia'] as num?) ?? 0;
-    final valorInv = (_serie?['valorInventario'] as num?) ?? 0;
+    final margen =
+        double.tryParse(_serie?['margenGanancia']?.toString() ?? '') ?? 0.0;
+    final valorInv =
+        double.tryParse(_serie?['valorInventario']?.toString() ?? '') ?? 0.0;
+    final rent = _serie?['rentabilidad'] as Map<String, dynamic>?;
+    final pctRent = double.tryParse(rent?['porcentaje']?.toString() ?? '') ?? 0.0;
 
     final kpis = <Widget>[
       _MetricaCard(
@@ -412,15 +492,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         valor: 'Bs. ${_moneda(ventas['montoTotalBs'])}',
         descripcion:
             '${_num(ventas['cantidadFacturas'])} facturas · equiv. \$${_moneda(ventas['montoTotal'])} USD',
-        onTap: () => _navegar(const FacturasScreen()),
+        onTap: () => _irAFacturas(),
       ),
       _MetricaCard(
         icon: Icons.trending_up,
         color: margen >= 0 ? Colors.teal : Colors.red,
         titulo: 'Margen de Ganancia',
         valor: '\$${_moneda(margen)}',
-        descripcion: '(Precio − Costo histórico) × Cantidad.',
-        onTap: () => _navegar(const FacturasScreen()),
+        descripcion:
+            'Rentabilidad real: ${pctRent.toStringAsFixed(1)}% sobre ventas (Costo = CMP al vender).',
+        onTap: () => _irAFacturas(),
       ),
       _MetricaCard(
         icon: Icons.receipt_long,
@@ -429,7 +510,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         valor: 'Bs. ${_moneda(ventas['ticketPromedioBs'])}',
         descripcion:
             '\$${_moneda(ventas['ticketPromedio'])} USD por factura.',
-        onTap: () => _navegar(const FacturasScreen()),
+        onTap: () => _irAFacturas(),
       ),
       _MetricaCard(
         icon: Icons.warehouse,
@@ -590,6 +671,142 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Desglose de caja diaria por método de pago + alertas de stock.
+  /// Top 5 productos más vendidos del periodo seleccionado (BI, Fase 6).
+  Widget _buildTopProductos() {
+    if (_cargandoSerie || _errorSerie != null) return const SizedBox.shrink();
+
+    final top =
+        (_serie?['topProductos'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+
+    final maxUnidades = top.fold<double>(0, (m, p) {
+      final u = (p['unidades'] as num? ?? 0).toDouble();
+      return u > m ? u : m;
+    });
+
+    // Podio: oro, plata, bronce; el resto en slate.
+    const medallas = [
+      Color(0xFFF59E0B),
+      Color(0xFF94A3B8),
+      Color(0xFFB45309),
+    ];
+    Color colorPosicion(int i) =>
+        i < medallas.length ? medallas[i] : const Color(0xFF334155);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.emoji_events, color: Color(0xFFF59E0B), size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Top 5 Productos Más Vendidos',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: top.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'Sin productos vendidos en el periodo seleccionado.',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (var i = 0; i < top.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 13,
+                                backgroundColor: colorPosicion(i),
+                                child: Text(
+                                  '${i + 1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      (top[i]['nombre'] ?? '').toString(),
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 3),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: FractionallySizedBox(
+                                        alignment: Alignment.centerLeft,
+                                        widthFactor: maxUnidades > 0
+                                            ? ((top[i]['unidades'] as num? ??
+                                                          0)
+                                                      .toDouble() /
+                                                  maxUnidades)
+                                                .clamp(0.02, 1.0)
+                                            : 0.02,
+                                        child: Container(
+                                          height: 4,
+                                          color: colorPosicion(i),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '${_num(top[i]['unidades'])} und',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    '\$${_moneda(top[i]['monto'])}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCajaDiaria() {
     final caja = (_serie?['cajaDiaria'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
@@ -665,9 +882,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         if (alertas.isNotEmpty) ...[
           const SizedBox(height: 16),
-          const Text(
-            'Alertas de Stock Bajo',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const Text(
+                'Alertas de Reposición Crítica',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade700,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${alertas.length} críticos',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Card(
@@ -976,3 +1216,196 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
+
+/// Tarjeta de período con botón pop-up "Ver Facturas".
+/// Tap en la tarjeta → solo selecciona el período (métricas con caché SWR);
+/// tap en el botón flotante → navegación explícita a Facturas. El botón
+/// permanece oculto hasta seleccionar la tarjeta y emerge con rebote
+/// (Curves.elasticOut); captura su propio gesto (stopPropagation).
+class _TarjetaPeriodo extends StatefulWidget {
+  final String etiqueta;
+  final bool seleccionada;
+  final VoidCallback onSeleccionar;
+  final VoidCallback onVerFacturas;
+
+  const _TarjetaPeriodo({
+    required this.etiqueta,
+    required this.seleccionada,
+    required this.onSeleccionar,
+    required this.onVerFacturas,
+  });
+
+  @override
+  State<_TarjetaPeriodo> createState() => _TarjetaPeriodoState();
+}
+
+class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _escala;
+  late final Animation<double> _opacidad;
+  late final Animation<Offset> _desplazamiento;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    );
+    // Rebote tipo "cartoon pop": entrada elástica, salida rápida y suave.
+    _escala = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.elasticOut,
+      reverseCurve: Curves.easeIn,
+    );
+    _opacidad = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
+      reverseCurve: Curves.easeIn,
+    );
+    _desplazamiento = Tween<Offset>(
+      begin: const Offset(0, 0.5),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.elasticOut,
+      reverseCurve: Curves.easeIn,
+    ));
+    if (widget.seleccionada) _controller.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _TarjetaPeriodo old) {
+    super.didUpdateWidget(old);
+    if (widget.seleccionada == old.seleccionada) return;
+    if (widget.seleccionada) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activo = widget.seleccionada;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // ── Tarjeta seleccionable (solo métricas) ────────────────────
+          SizedBox(
+            height: 74,
+            width: double.infinity,
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: activo ? 3 : 1,
+              color: activo ? Colors.blueAccent : null,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: activo ? Colors.blueAccent : const Color(0xFF334155),
+                  width: activo ? 2 : 1,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: widget.onSeleccionar,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.calendar_month,
+                        size: 18,
+                        color: activo ? Colors.white : Colors.blueAccent,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.etiqueta,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: activo
+                              ? Colors.white
+                              : const Color(0xFFE2E8F0),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // ── Botón pop-up "Ver Facturas" (rebote elástico) ────────────
+          Positioned(
+            bottom: -13,
+            left: 6,
+            right: 6,
+            child: IgnorePointer(
+              ignoring: !activo,
+              child: FadeTransition(
+                opacity: _opacidad,
+                child: SlideTransition(
+                  position: _desplazamiento,
+                  child: ScaleTransition(
+                    scale: _escala,
+                    alignment: Alignment.bottomCenter,
+                    child: Material(
+                      color: const Color(0xFF3B82F6),
+                      borderRadius: BorderRadius.circular(20),
+                      elevation: 6,
+                      child: InkWell(
+                        onTap: widget.onVerFacturas,
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.receipt_long,
+                                size: 13,
+                                color: Colors.white,
+                              ),
+                              SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Ver Facturas',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

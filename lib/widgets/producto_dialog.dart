@@ -2,12 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
+import '../services/api_service.dart';
 
 class ProductoDialog extends StatefulWidget {
   final ProductoModel? producto;
   final List<CategoriaModel> categorias;
+  final void Function(CategoriaModel categoria)? onCategoriaCreada;
 
-  const ProductoDialog({super.key, this.producto, required this.categorias});
+  const ProductoDialog({
+    super.key,
+    this.producto,
+    required this.categorias,
+    this.onCategoriaCreada,
+  });
 
   @override
   State<ProductoDialog> createState() => _ProductoDialogState();
@@ -22,11 +29,13 @@ class _ProductoDialogState extends State<ProductoDialog> {
   late TextEditingController _costoController;
   late TextEditingController _stockActualController;
   late TextEditingController _stockMinimoController;
+  late List<CategoriaModel> _categorias;
   int? _selectedCategoriaId;
 
   @override
   void initState() {
     super.initState();
+    _categorias = List.of(widget.categorias);
     _skuController = TextEditingController(
       text: widget.producto?.skuCodigo ?? '',
     );
@@ -48,13 +57,13 @@ class _ProductoDialogState extends State<ProductoDialog> {
     _stockMinimoController = TextEditingController(
       text: widget.producto?.stockMinimo.toString() ?? '5',
     );
-    final idsCategorias = widget.categorias.map((c) => c.categoriaId).toSet();
+    final idsCategorias = _categorias.map((c) => c.categoriaId).toSet();
     final categoriaProducto = widget.producto?.categoriaId;
     _selectedCategoriaId =
         (categoriaProducto != null && idsCategorias.contains(categoriaProducto))
             ? categoriaProducto
-            : (widget.categorias.isNotEmpty
-                ? widget.categorias.first.categoriaId
+            : (_categorias.isNotEmpty
+                ? _categorias.first.categoriaId
                 : null);
   }
 
@@ -68,6 +77,79 @@ class _ProductoDialogState extends State<ProductoDialog> {
     _stockActualController.dispose();
     _stockMinimoController.dispose();
     super.dispose();
+  }
+
+  /// Crea una categoría nueva "en línea" desde el formulario de producto,
+  /// sin salir del diálogo. Tras crearla, la agrega a la lista local, la
+  /// selecciona y notifica al padre para que sincronice su estado.
+  Future<void> _crearCategoriaInline() async {
+    final nombreCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+
+    final confirmada = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Nueva Categoría'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Nombre *'),
+            ),
+            TextField(
+              controller: descCtrl,
+              decoration: const InputDecoration(labelText: 'Descripción'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+            child: const Text(
+              'Crear',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmada == true && nombreCtrl.text.trim().isNotEmpty) {
+      final nueva = await ApiService.createCategoriaConRetorno(
+        nombreCtrl.text.trim(),
+        descCtrl.text.trim(),
+      );
+      if (nueva != null && mounted) {
+        setState(() {
+          _categorias.add(nueva);
+          _selectedCategoriaId = nueva.categoriaId;
+        });
+        widget.onCategoriaCreada?.call(nueva);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Categoría "${nueva.nombreCategoria}" creada'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error al crear la categoría'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+
+    nombreCtrl.dispose();
+    descCtrl.dispose();
   }
 
   void _guardar() {
@@ -113,18 +195,45 @@ class _ProductoDialogState extends State<ProductoDialog> {
                 controller: _descripcionController,
                 decoration: const InputDecoration(labelText: 'Descripción'),
               ),
-              DropdownButtonFormField<int>(
-                value: _selectedCategoriaId,
-                decoration: const InputDecoration(labelText: 'Categoría *'),
-                items: widget.categorias.map((cat) {
-                  return DropdownMenuItem<int>(
-                    value: cat.categoriaId,
-                    child: Text(cat.nombreCategoria),
-                  );
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedCategoriaId = val),
-                validator: (val) =>
-                    val == null ? 'Seleccione una categoría' : null,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _selectedCategoriaId,
+                      decoration: const InputDecoration(labelText: 'Categoría *'),
+                      items: _categorias.map((cat) {
+                        return DropdownMenuItem<int>(
+                          value: cat.categoriaId,
+                          child: Text(cat.nombreCategoria),
+                        );
+                      }).toList(),
+                      onChanged: (val) =>
+                          setState(() => _selectedCategoriaId = val),
+                      validator: (val) =>
+                          val == null ? 'Seleccione una categoría' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Tooltip(
+                      message: 'Crear nueva categoría',
+                      child: OutlinedButton.icon(
+                        onPressed: _crearCategoriaInline,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Nueva Categoría'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 14,
+                          ),
+                          foregroundColor: Colors.blueAccent,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               Row(
                 children: [

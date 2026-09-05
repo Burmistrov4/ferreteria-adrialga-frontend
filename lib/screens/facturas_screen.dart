@@ -6,8 +6,12 @@ import '../services/factura_pdf_service.dart';
 import '../widgets/factura_detalle_dialog.dart';
 
 /// Registro de Facturas: historial de ventas con opción de imprimir en PDF.
+/// Acepta [periodoInicial] ('hoy' | 'semana' | 'mes' | 'anio') para iniciar
+/// con un filtro temporal ya aplicado (navegación cruzada desde el Dashboard).
 class FacturasScreen extends StatefulWidget {
-  const FacturasScreen({super.key});
+  final String? periodoInicial;
+
+  const FacturasScreen({super.key, this.periodoInicial});
 
   @override
   State<FacturasScreen> createState() => _FacturasScreenState();
@@ -19,16 +23,40 @@ class _FacturasScreenState extends State<FacturasScreen> {
   String _query = '';
   double _tasa = 36.50;
 
+  // ── Filtro temporal ─────────────────────────────────────────────────────
+  // 'todas' | 'hoy' | 'semana' | 'mes' | 'anio' | 'personalizado'
+  String _filtro = 'todas';
+  DateTimeRange? _rangoCustom;
+
+  static const _filtrosRapidos = <(String, String)>[
+    ('todas', 'Todas'),
+    ('hoy', 'Hoy'),
+    ('semana', 'Esta Semana'),
+    ('mes', 'Este Mes'),
+    ('anio', 'Este Año'),
+  ];
+
   @override
   void initState() {
     super.initState();
+    final inicial = widget.periodoInicial;
+    if (inicial != null &&
+        ['hoy', 'semana', 'mes', 'anio'].contains(inicial)) {
+      _filtro = inicial;
+    }
     _cargar();
   }
 
   Future<void> _cargar() async {
     setState(() => _isLoading = true);
     try {
-      final data = await ApiService.getFacturas();
+      final data = await ApiService.getFacturas(
+        periodo: _filtro == 'personalizado' || _filtro == 'todas'
+            ? null
+            : _filtro,
+        desde: _filtro == 'personalizado' ? _rangoCustom?.start : null,
+        hasta: _filtro == 'personalizado' ? _rangoCustom?.end : null,
+      );
       _tasa = ApiService.lastTasa;
       if (mounted) {
         setState(() {
@@ -68,6 +96,85 @@ class _FacturasScreenState extends State<FacturasScreen> {
     return '${dt.day.toString().padLeft(2, "0")}/${dt.month.toString().padLeft(2, "0")}/${dt.year}';
   }
 
+  // ── Barra de filtros temporales ───────────────────────────────────────────
+
+  Future<void> _seleccionarPersonalizado() async {
+    final hoy = DateTime.now();
+    final rango = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(hoy.year - 5),
+      lastDate: DateTime(hoy.year + 1, 12, 31),
+      initialDateRange: _rangoCustom,
+      helpText: 'SELECCIONE EL RANGO DE FECHAS',
+      cancelText: 'Cancelar',
+      confirmText: 'Aplicar',
+      locale: const Locale('es', 'VE'),
+    );
+    if (rango == null) return;
+    setState(() {
+      _filtro = 'personalizado';
+      _rangoCustom = rango;
+    });
+    _cargar();
+  }
+
+  void _seleccionarFiltro(String filtro) {
+    if (filtro == 'personalizado') {
+      _seleccionarPersonalizado();
+      return;
+    }
+    if (filtro == _filtro) return;
+    setState(() => _filtro = filtro);
+    _cargar();
+  }
+
+  Widget _buildBarraFiltros() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ..._filtrosRapidos.map((f) {
+            final sel = _filtro == f.$1;
+            return ChoiceChip(
+              label: Text(f.$2),
+              selected: sel,
+              selectedColor: Colors.blue,
+              labelStyle: TextStyle(
+                color: sel ? Colors.white : Colors.grey[700],
+                fontWeight: sel ? FontWeight.bold : FontWeight.normal,
+              ),
+              onSelected: (_) => _seleccionarFiltro(f.$1),
+            );
+          }),
+          ChoiceChip(
+            avatar: Icon(
+              Icons.date_range,
+              size: 18,
+              color: _filtro == 'personalizado' ? Colors.white : Colors.grey,
+            ),
+            label: Text(
+              _filtro == 'personalizado' && _rangoCustom != null
+                  ? '${_fmtFecha(_rangoCustom!.start)} - ${_fmtFecha(_rangoCustom!.end)}'
+                  : 'Personalizado',
+            ),
+            selected: _filtro == 'personalizado',
+            selectedColor: Colors.blue,
+            labelStyle: TextStyle(
+              color: _filtro == 'personalizado' ? Colors.white : Colors.grey[700],
+              fontWeight: _filtro == 'personalizado'
+                  ? FontWeight.bold
+                  : FontWeight.normal,
+            ),
+            onSelected: (_) => _seleccionarFiltro('personalizado'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,13 +204,15 @@ class _FacturasScreenState extends State<FacturasScreen> {
                     onChanged: (v) => setState(() => _query = v),
                   ),
                 ),
+                _buildBarraFiltros(),
                 Expanded(
                   child: _filtradas.isEmpty
                       ? const Center(child: Text('No hay facturas registradas'))
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                           itemCount: _filtradas.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final f = _filtradas[index];
                             return Card(
@@ -112,8 +221,8 @@ class _FacturasScreenState extends State<FacturasScreen> {
                               child: ListTile(
                                 onTap: () => _verDetalle(f),
                                 leading: CircleAvatar(
-                                  backgroundColor: Colors.blue.withOpacity(
-                                    0.12,
+                                  backgroundColor: Colors.blue.withValues(
+                                    alpha: 0.12,
                                   ),
                                   child: const Icon(
                                     Icons.receipt_long,

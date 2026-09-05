@@ -4,6 +4,7 @@ import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
 import '../widgets/producto_dialog.dart';
+import 'categorias_screen.dart';
 
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
@@ -17,6 +18,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
   List<CategoriaModel> _categorias = [];
   String _searchQuery = '';
   bool _isLoading = true;
+  int? _categoriaFiltroId; // null = Todas las categorías
 
   @override
   void initState() {
@@ -45,8 +47,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
   }
 
   List<ProductoModel> get _productosFiltrados {
-    if (_searchQuery.isEmpty) return _productos;
     return _productos.where((p) {
+      // Filtro por categoría seleccionada (null = todas)
+      if (_categoriaFiltroId != null &&
+          p.categoriaId != _categoriaFiltroId) {
+        return false;
+      }
+      // Filtro por texto (nombre o SKU)
+      if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return p.nombre.toLowerCase().contains(q) ||
           p.skuCodigo.toLowerCase().contains(q);
@@ -56,8 +64,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
   Future<void> _abrirDialogoProducto([ProductoModel? producto]) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) =>
-          ProductoDialog(producto: producto, categorias: _categorias),
+      builder: (_) => ProductoDialog(
+        producto: producto,
+        categorias: _categorias,
+        onCategoriaCreada: (cat) {
+          setState(() => _categorias.add(cat));
+          _cargarDatos();
+        },
+      ),
     );
 
     if (result != null) {
@@ -137,17 +151,136 @@ class _InventarioScreenState extends State<InventarioScreen> {
     }
   }
 
+  /// Abre la pantalla de gestión de categorías (crear/editar/desactivar).
+  /// Al volver, recarga los datos para refrescar el filtro por categoría.
+  Future<void> _abrirGestionCategorias() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CategoriasScreen()),
+    );
+    _cargarDatos();
+  }
+
+  /// Barra de filtros por categoría: chip "Todas" + uno por categoría.
+  Widget _buildFiltroCategorias() {
+    if (_categorias.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _categorias.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return ChoiceChip(
+              label: const Text('Todas'),
+              selected: _categoriaFiltroId == null,
+              onSelected: (_) => setState(() => _categoriaFiltroId = null),
+            );
+          }
+          final cat = _categorias[index - 1];
+          return ChoiceChip(
+            label: Text(cat.nombreCategoria),
+            selected: _categoriaFiltroId == cat.categoriaId,
+            onSelected: (sel) => setState(
+              () => _categoriaFiltroId = sel ? cat.categoriaId : null,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildVistaProductos() {
+    return Column(
+      children: [
+        TextField(
+          decoration: const InputDecoration(
+            labelText: 'Buscar por SKU o Nombre',
+            prefixIcon: Icon(Icons.search),
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (val) => setState(() => _searchQuery = val),
+        ),
+        const SizedBox(height: 12),
+        _buildFiltroCategorias(),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _productosFiltrados.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No hay productos que coincidan con el filtro',
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: _productosFiltrados.length,
+                  separatorBuilder: (_, _) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final prod = _productosFiltrados[index];
+                    final bajoStock = prod.stockActual <= prod.stockMinimo;
+                    return ListTile(
+                      title: Text(
+                        prod.nombre,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        'SKU: ${prod.skuCodigo} | Stock: ${prod.stockActual} (Mín: ${prod.stockMinimo})',
+                      ),
+                      leading: CircleAvatar(
+                        backgroundColor: bajoStock
+                            ? Colors.red.shade100
+                            : Colors.blue.shade100,
+                        child: Icon(
+                          bajoStock ? Icons.warning : Icons.inventory_2,
+                          color: bajoStock ? Colors.red : Colors.blue,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '\$${prod.precioVenta.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => _abrirDialogoProducto(prod),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _eliminarProducto(prod),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestión de Inventario'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.category),
+            onPressed: _abrirGestionCategorias,
+            tooltip: 'Gestionar categorías',
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _cargarDatos),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _abrirDialogoProducto(),
+        onPressed: _abrirDialogoProducto,
         icon: const Icon(Icons.add),
         label: const Text('Nuevo Producto'),
       ),
@@ -155,74 +288,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  TextField(
-                    decoration: const InputDecoration(
-                      labelText: 'Buscar por SKU o Nombre',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: _productosFiltrados.length,
-                      separatorBuilder: (_, __) => const Divider(),
-                      itemBuilder: (context, index) {
-                        final prod = _productosFiltrados[index];
-                        final bajoStock = prod.stockActual <= prod.stockMinimo;
-                        return ListTile(
-                          title: Text(
-                            prod.nombre,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            'SKU: ${prod.skuCodigo} | Stock: ${prod.stockActual} (Mín: ${prod.stockMinimo})',
-                          ),
-                          leading: CircleAvatar(
-                            backgroundColor: bajoStock
-                                ? Colors.red.shade100
-                                : Colors.blue.shade100,
-                            child: Icon(
-                              bajoStock ? Icons.warning : Icons.inventory_2,
-                              color: bajoStock ? Colors.red : Colors.blue,
-                            ),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '\$${prod.precioVenta.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.edit,
-                                  color: Colors.blue,
-                                ),
-                                onPressed: () => _abrirDialogoProducto(prod),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.red,
-                                ),
-                                onPressed: () => _eliminarProducto(prod),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+              child: _buildVistaProductos(),
             ),
     );
   }

@@ -12,7 +12,12 @@ class FacturaDetalleDialog extends StatelessWidget {
 
   static String _fmtFecha(DateTime? dt) {
     if (dt == null) return '---';
-    return '${dt.day.toString().padLeft(2, "0")}/${dt.month.toString().padLeft(2, "0")}/${dt.year}';
+    final d = dt.day.toString().padLeft(2, "0");
+    final m = dt.month.toString().padLeft(2, "0");
+    final h = dt.hour.toString().padLeft(2, "0");
+    final mi = dt.minute.toString().padLeft(2, "0");
+    final s = dt.second.toString().padLeft(2, "0");
+    return '$d/$m/${dt.year} $h:$mi:$s';
   }
 
   @override
@@ -80,6 +85,22 @@ class FacturaDetalleDialog extends StatelessWidget {
                 ),
               ),
             ),
+            if (f.pagos.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Forma de Pago (desglose):',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              ...f.pagos.map((p) {
+                final bs = p.enBolivares(f.tasaCambio ?? 0);
+                return _row(
+                  '${p.metodo}${p.esDivisa ? " (USD)" : " (Bs)"}',
+                  'Bs. ${bs.toStringAsFixed(2)}'
+                      '${p.esDivisa ? "  •  IGTF 3%" : ""}',
+                );
+              }),
+            ],
             const Divider(),
             _row('Base Imponible:', '\$${f.subtotal.toStringAsFixed(2)}'),
             _row('IVA (16%):', '\$${f.totalIva.toStringAsFixed(2)}'),

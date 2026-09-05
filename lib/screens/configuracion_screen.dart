@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/theme_notifier.dart';
 import '../services/api_service.dart';
 import 'categorias_screen.dart';
 
@@ -108,7 +110,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                   Text(
                     _cargando
                         ? 'Consultando...'
-                        : '${_tasa?.toStringAsFixed(2) ?? '--'} Bs/USD',
+                        : '${_tasa?.toStringAsFixed(4) ?? '--'} Bs/USD',
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
@@ -125,6 +127,33 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Tema claro / oscuro ──────────────────────────────────────────
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Consumer<ThemeNotifier>(
+              builder: (context, themeNotifier, _) => SwitchListTile(
+                secondary: Icon(
+                  themeNotifier.isDark ? Icons.dark_mode : Icons.light_mode,
+                  color: themeNotifier.isDark ? Colors.indigo : Colors.amber,
+                ),
+                title: const Text(
+                  'Modo Oscuro',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  themeNotifier.isDark ? 'Tema oscuro activado' : 'Tema claro activado',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                value: themeNotifier.isDark,
+                onChanged: (_) => themeNotifier.toggle(),
               ),
             ),
           ),
