@@ -1,8 +1,0 @@
-# CMake generation dependency list for this directory.
-C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/build/windows/x64/pdfium-src/PDFiumConfig.cmake
-C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/windows/flutter/ephemeral/.plugin_symlinks/printing/windows/CMakeLists.txt
-C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/windows/flutter/ephemeral/.plugin_symlinks/printing/windows/DownloadProject.CMakeLists.cmake.in
-C:/Users/Loro/Desktop/Cuarto Semestre/3. Analisis de Sistemas II/Adrialga_Sistema_Renovado/adrialga_frontend/windows/flutter/ephemeral/.plugin_symlinks/printing/windows/DownloadProject.cmake
-D:/Visual Studio/Visual Studio 2026/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeParseArguments.cmake
-D:/Visual Studio/Visual Studio 2026/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake
-D:/Visual Studio/Visual Studio 2026/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake
