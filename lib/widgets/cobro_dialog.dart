@@ -93,9 +93,16 @@ class _CobroDialogState extends State<CobroDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        width: 520,
-        padding: const EdgeInsets.all(20.0),
+      // Responsive: en teléfonos el diálogo ocupa el ancho disponible
+      // (respetando los insets de Material); en tablet/desktop se limita a 520.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final ancho = constraints.maxWidth.isFinite && constraints.maxWidth < 520
+              ? constraints.maxWidth
+              : 520.0;
+          return Container(
+            width: ancho,
+            padding: const EdgeInsets.all(20.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -116,8 +123,8 @@ class _CobroDialogState extends State<CobroDialog> {
                   ),
                   backgroundColor:
                       (widget.tasaEsBCV == true)
-                          ? Colors.blue.shade50
-                          : Colors.orange.shade50,
+                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                          : Colors.orange.withValues(alpha: 0.18),
                 ),
               ],
             ),
@@ -126,7 +133,7 @@ class _CobroDialogState extends State<CobroDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -406,6 +413,8 @@ class _CobroDialogState extends State<CobroDialog> {
             ),
           ],
         ),
+          );
+        },
       ),
     );
   }

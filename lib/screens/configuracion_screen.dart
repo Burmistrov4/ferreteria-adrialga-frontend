@@ -138,22 +138,64 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Consumer<ThemeNotifier>(
-              builder: (context, themeNotifier, _) => SwitchListTile(
-                secondary: Icon(
-                  themeNotifier.isDark ? Icons.dark_mode : Icons.light_mode,
-                  color: themeNotifier.isDark ? Colors.indigo : Colors.amber,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Consumer<ThemeNotifier>(
+                builder: (context, themeNotifier, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          themeNotifier.isDark
+                              ? Icons.dark_mode
+                              : Icons.light_mode,
+                          color: themeNotifier.isDark
+                              ? Colors.indigo
+                              : Colors.amber,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Tema de la aplicación',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SegmentedButton<ThemeModePreference>(
+                      segments: const [
+                        ButtonSegment(
+                          value: ThemeModePreference.system,
+                          icon: Icon(Icons.brightness_auto),
+                          label: Text('Sistema'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeModePreference.light,
+                          icon: Icon(Icons.light_mode),
+                          label: Text('Claro'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeModePreference.dark,
+                          icon: Icon(Icons.dark_mode),
+                          label: Text('Oscuro'),
+                        ),
+                      ],
+                      selected: {themeNotifier.preference},
+                      onSelectionChanged: (sel) =>
+                          themeNotifier.setPreference(sel.first),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      themeNotifier.isDark
+                          ? 'Modo oscuro activado (se conserva en cada inicio)'
+                          : 'Modo claro activado (se conserva en cada inicio)',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
                 ),
-                title: const Text(
-                  'Modo Oscuro',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  themeNotifier.isDark ? 'Tema oscuro activado' : 'Tema claro activado',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                value: themeNotifier.isDark,
-                onChanged: (_) => themeNotifier.toggle(),
               ),
             ),
           ),

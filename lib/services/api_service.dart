@@ -713,4 +713,98 @@ class ApiService {
     }
     return {'success': false, 'error': response.body};
   }
+// ═══════════════════════════════════════════════════════════════════════════
+  // APERTURA / CIERRE DE CAJA (arqueo por turno)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Consulta el estado actual del turno de caja.
+  /// Retorna { cajaActiva, caja?, resumenTurno }.
+  static Future<Map<String, dynamic>> getEstadoCaja() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/caja/estado'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Error al consultar el estado de la caja');
+  }
+
+  /// Abre un nuevo turno de caja con un monto inicial (arranque).
+  static Future<Map<String, dynamic>> abrirCaja({
+    required double montoInicial,
+    String? observacion,
+  }) async {
+    final body = <String, dynamic>{'montoInicial': montoInicial};
+    final obs = observacion?.trim();
+    if (obs != null && obs.isNotEmpty) body['observacion'] = obs;
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/caja/abrir'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return {'success': true, ...jsonDecode(response.body)};
+    }
+    return {'success': false, 'error': _mensajeError(response.body)};
+  }
+
+  /// Cierra el turno activo con el arqueo (monto contado en caja).
+  static Future<Map<String, dynamic>> cerrarCaja({
+    double? montoContado,
+    String? observacion,
+  }) async {
+    final body = <String, dynamic>{};
+    if (montoContado != null) body['montoContado'] = montoContado;
+    final obs = observacion?.trim();
+    if (obs != null && obs.isNotEmpty) body['observacion'] = obs;
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/caja/cerrar'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return {'success': true, ...jsonDecode(response.body)};
+    }
+    return {'success': false, 'error': _mensajeError(response.body)};
+  }
+
+  /// Reporte de arqueos del mes: turnos con saldo inicial/ingresos/egresos/
+  /// esperado/entregado y la diferencia (faltante/sobrante).
+  /// [anio]/[mes] opcionales; por defecto el mes en curso.
+  static Future<List<Map<String, dynamic>>> getHistoricoArqueos({
+    int? anio,
+    int? mes,
+  }) async {
+    final now = DateTime.now();
+    final params = <String, String>{
+      'anio': (anio ?? now.year).toString(),
+      'mes': (mes ?? now.month).toString(),
+    };
+    final uri = Uri.parse('$baseUrl/caja/historico').replace(queryParameters: params);
+    final response = await http.get(uri, headers: _headers).timeout(
+          const Duration(seconds: 12),
+        );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final filas = data['filas'] as List<dynamic>? ?? [];
+      return filas.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Extrae el mensaje legible del cuerpo de un error HTTP.
+  static String _mensajeError(String body) {
+    try {
+      final Map<String, dynamic> json = jsonDecode(body) as Map<String, dynamic>;
+      return (json['error'] as String?) ??
+          (json['message'] as String?) ??
+          'Ocurrió un error inesperado';
+    } catch (_) {
+      return 'Ocurrió un error inesperado';
+    }
+  }
 }

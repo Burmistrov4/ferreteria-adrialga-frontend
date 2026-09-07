@@ -351,14 +351,10 @@ class _PosScreenState extends State<PosScreen> {
             flex: 2,
             child: Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? const Color(0xFF1E293B)
-                    : Colors.grey.shade50,
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
                 border: Border(
                   left: BorderSide(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF334155)
-                        : Colors.grey.shade200,
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
                 ),
               ),

@@ -10,9 +10,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Restaurar la sesión persistida (token JWT) antes de mostrar la app
   await ApiService.loadToken();
+  // Restaurar la preferencia de tema (claro/oscuro/sistema) antes del primer frame
+  final themeNotifier = await ThemeNotifier.create();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeNotifier(),
+    ChangeNotifierProvider.value(
+      value: themeNotifier,
       child: const MyApp(),
     ),
   );

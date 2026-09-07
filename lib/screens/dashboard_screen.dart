@@ -58,6 +58,8 @@ const List<_ModuloSistema> _modulosSistema = [
       Icons.add_shopping_cart, Colors.purple, EntradasScreen()),
   _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
       Colors.indigo, ProveedoresScreen()),
+  // Módulo 7: las métricas profundas viven en el propio Dashboard —
+  // _abrirModulo hace scroll a esa sección (ver _irAMetricas).
   _ModuloSistema(7, 'Métricas Profundas', 'ADMINISTRACIÓN', Icons.insights,
       Colors.deepOrange, null),
   _ModuloSistema(8, 'Finanzas & Caja', 'ADMINISTRACIÓN',
@@ -384,6 +386,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 20),
               _buildTendenciaVentas(),
               const SizedBox(height: 20),
+              _buildInsightsPanel(),
+              const SizedBox(height: 20),
               _buildTopProductos(),
               const SizedBox(height: 20),
               _buildCajaDiaria(),
@@ -553,6 +557,210 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: kpis,
         );
       },
+    );
+  }
+
+  // ═══════════════ MOTOR DE INSIGHTS INTELIGENTES (Fase 8) ═══════════════
+  // Reglas de negocio que derivan recomendaciones accionables de la serie
+  // financiera ya cargada (cero llamadas extra al backend).
+
+  /// Genera la lista de insights del período activo, ordenada por prioridad.
+  List<({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion})>
+      _generarInsights() {
+    final insights = <({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion})>[];
+    final s = _serie;
+    if (s == null) return insights;
+
+    final ventas = (s['ventas'] as Map<String, dynamic>?) ?? const {};
+    final rent = (s['rentabilidad'] as Map<String, dynamic>?) ?? const {};
+    final serie = (s['serie'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final caja = (s['cajaDiaria'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final alertas = (s['alertasStock'] as List<dynamic>?) ?? const [];
+    double num(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    // 1) Margen de ganancia: umbral ferretería sano ≈ 25%.
+    final pctMargen = num(rent['porcentaje']);
+    final margenUsd = num(rent['margenUsd']);
+    if (num(ventas['montoTotal']) > 0) {
+      if (pctMargen < 15) {
+        insights.add((
+          icon: Icons.trending_down,
+          color: Colors.redAccent,
+          titulo: 'Margen bajo (${pctMargen.toStringAsFixed(1)}%)',
+          mensaje:
+              'Ganancia de \$${_moneda(margenUsd)} sobre \$${_moneda(ventas['montoTotal'])} en ventas. Revisa precios de costo y márgenes por producto antes de reponer inventario.',
+          accion: () => _navegar(InventarioScreen()),
+        ));
+      } else if (pctMargen >= 30) {
+        insights.add((
+          icon: Icons.trending_up,
+          color: Colors.green,
+          titulo: 'Excelente margen (${pctMargen.toStringAsFixed(1)}%)',
+          mensaje:
+              'La rentabilidad del período supera el 30%. Momento ideal para negociar volumen con proveedores o invertir en stock de alta rotación.',
+          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)),
+        ));
+      } else {
+        insights.add((
+          icon: Icons.percent,
+          color: Colors.blueAccent,
+          titulo: 'Margen saludable (${pctMargen.toStringAsFixed(1)}%)',
+          mensaje:
+              'Ganancia de \$${_moneda(margenUsd)} en el período. Un empuje del 5% en el ticket promedio sumaría \$${_moneda(margenUsd * 0.05 / (pctMargen / 100))} adicionales.',
+          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)),
+        ));
+      }
+    }
+
+    // 2) Tendencia: compara los dos últimos tramos de la serie.
+    if (serie.length >= 2) {
+      final previo = num(serie[serie.length - 2]['montoBs']);
+      final actual = num(serie[serie.length - 1]['montoBs']);
+      if (previo > 0) {
+        final variacion = ((actual - previo) / previo) * 100;
+        if (variacion <= -15) {
+          insights.add((
+            icon: Icons.warning_amber_rounded,
+            color: Colors.orange,
+            titulo: 'Ventas cayendo (${variacion.toStringAsFixed(0)}%)',
+            mensaje:
+                'El último tramo cerró en Bs. ${_moneda(actual)} vs Bs. ${_moneda(previo)} del anterior. Considera promociones o verificar disponibilidad de los productos más vendidos.',
+            accion: () => _navegar(InventarioScreen()),
+          ));
+        } else if (variacion >= 15) {
+          insights.add((
+            icon: Icons.rocket_launch,
+            color: Colors.green,
+            titulo: 'Ventas al alza (+${variacion.toStringAsFixed(0)}%)',
+            mensaje:
+                'Bs. ${_moneda(actual)} en el último tramo (+${variacion.toStringAsFixed(0)}%). Asegura stock del Top 5 para no perder la racha.',
+            accion: () => _navegar(InventarioScreen()),
+          ));
+        }
+      }
+    }
+
+    // 3) Mejor franja: el tramo con mayores ventas (personal/reposición).
+    if (serie.length >= 3) {
+      Map<String, dynamic> mejor = serie.first;
+      for (final f in serie) {
+        if (num(f['montoBs']) > num(mejor['montoBs'])) mejor = f;
+      }
+      if (num(mejor['montoBs']) > 0) {
+        insights.add((
+          icon: Icons.schedule,
+          color: Colors.deepPurple,
+          titulo: 'Mejor momento: ${mejor['etiqueta']}',
+          mensaje:
+              'Concentró Bs. ${_moneda(mejor['montoBs'])}. Prioriza cajero y reposición de mercancía en esa franja.',
+          accion: null,
+        ));
+      }
+    }
+
+    // 4) Stock crítico: productos en o bajo el mínimo.
+    final conteoAlertas = alertas.length;
+    if (conteoAlertas > 0) {
+      final primero = (alertas.first as Map).cast<String, dynamic>();
+      insights.add((
+        icon: Icons.inventory,
+        color: Colors.amber.shade800,
+        titulo: '$conteoAlertas producto(s) en stock mínimo',
+        mensaje:
+            '"${primero['Nombre']}" está al límite. Genera la nota de entrada antes de que la venta lo agote.',
+        accion: () => _navegar(InventarioScreen()),
+      ));
+    }
+
+    // 5) Concentración de cobros: método dominante del período.
+    if (caja.isNotEmpty) {
+      final total = caja.fold<double>(0, (t, c) => t + num(c['monto']));
+      if (total > 0) {
+        final dominante = caja.first; // ya viene ordenado desc por el backend
+        final pct = num(dominante['monto']) / total * 100;
+        if (pct >= 60) {
+          insights.add((
+            icon: Icons.account_balance_wallet,
+            color: const Color(0xFF8B5CF6),
+            titulo: '${dominante['metodo']}: ${pct.toStringAsFixed(0)}% de los cobros',
+            mensaje:
+                'Fuerte concentración en un solo método. Verifica que el flujo de caja físico cubra los egresos en efectivo del día.',
+            accion: () => _navegar(FinanzasScreen()),
+          ));
+        }
+      }
+    }
+
+    return insights;
+  }
+
+  /// Panel "Asistente de Negocio": recomendaciones accionables del período.
+  Widget _buildInsightsPanel() {
+    if (_cargandoSerie) return const SizedBox.shrink();
+    final insights = _generarInsights();
+    if (insights.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.primary, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Asistente de Negocio',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...insights.take(4).map((i) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Card(
+                elevation: 1,
+                margin: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: i.accion,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(i.icon, color: i.color, size: 26),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                i.titulo,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                i.mensaje,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (i.accion != null)
+                          const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            )),
+      ],
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../widgets/caja_turno_tab.dart';
 
 /// Parseo seguro de valores numéricos: Prisma serializa Decimal(18,4) como
 /// String en JSON, por lo que nunca se debe castear directo a double.
@@ -31,6 +32,7 @@ class _FinanzasScreenState extends State<FinanzasScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -39,13 +41,11 @@ class _FinanzasScreenState extends State<FinanzasScreen>
           tooltip: 'Regresar',
         ),
         title: const Text('8. Finanzas & Caja'),
-        backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-        foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: Column(
         children: [
           Container(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: cs.surfaceContainerLow,
             child: TabBar(
               controller: _tabController,
               labelColor: isDark ? const Color(0xFF8B5CF6) : const Color(0xFF6D28D9),
@@ -62,89 +62,12 @@ class _FinanzasScreenState extends State<FinanzasScreen>
             child: TabBarView(
               controller: _tabController,
               children: const [
-                _CajaTab(),
+                CajaTurnoTab(),
                 _PatrimonioTab(),
                 _CuentasPorPagarTab(),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CajaTab extends StatefulWidget {
-  const _CajaTab();
-  @override
-  State<_CajaTab> createState() => _CajaTabState();
-}
-
-class _CajaTabState extends State<_CajaTab> {
-  Map<String, dynamic>? _saldoData;
-  bool _cargando = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargarSaldo();
-  }
-
-  Future<void> _cargarSaldo() async {
-    try {
-      final data = await ApiService.getTesoreriaSaldo();
-      if (mounted) setState(() { _saldoData = data; _cargando = false; });
-    } catch (_) {
-      if (mounted) setState(() { _cargando = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (_cargando) return const Center(child: CircularProgressIndicator());
-    if (_saldoData == null) return const Center(child: Text('Error al cargar caja'));
-    final caja = _saldoData!['caja'] as Map<String, dynamic>? ?? {};
-    final saldo = _numD(caja['Saldo_Actual']);
-    final movimientos = (_saldoData!['movimientos'] as List?) ?? [];
-    return RefreshIndicator(
-      onRefresh: _cargarSaldo,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Saldo Disponible', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Text('\$${saldo.toStringAsFixed(2)}', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 32, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text('Movimientos Recientes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
-          const SizedBox(height: 8),
-          ...movimientos.map<Widget>((m) {
-            final esIngreso = m['Tipo'] == 'INGRESO';
-            return Card(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: esIngreso ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
-                  child: Icon(esIngreso ? Icons.arrow_downward : Icons.arrow_upward, color: esIngreso ? Colors.green : Colors.red),
-                ),
-                title: Text(m['Concepto'] ?? '', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                subtitle: Text('${m['Metodo_Pago'] ?? ''} - ${m['Fecha'] ?? ''}', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                trailing: Text('${esIngreso ? '+' : '-'}\$${_numD(m['Monto_USD']).toStringAsFixed(2)}', style: TextStyle(color: esIngreso ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-              ),
-            );
-          }),
         ],
       ),
     );
@@ -256,10 +179,10 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     if (_cargando) return const Center(child: CircularProgressIndicator());
     if (_cuentas == null) return const Center(child: Text('Error al cargar cuentas'));
-    if (_cuentas!.isEmpty) return Center(child: Text('No hay cuentas por pagar', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)));
+    if (_cuentas!.isEmpty) return Center(child: Text('No hay cuentas por pagar', style: TextStyle(color: cs.onSurfaceVariant)));
     return RefreshIndicator(
       onRefresh: _cargarCuentas,
       child: ListView.builder(
@@ -272,16 +195,16 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
           final estatus = cxp['Estatus'] ?? 'Pendiente';
           final prov = cxp['proveedores'] as Map<String, dynamic>?;
           return Card(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: cs.surfaceContainerLow,
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: estatus == 'Pendiente' ? Colors.orange.withValues(alpha: 0.2) : Colors.green.withValues(alpha: 0.2),
                 child: Icon(estatus == 'Pendiente' ? Icons.pending : Icons.check, color: estatus == 'Pendiente' ? Colors.orange : Colors.green),
               ),
-              title: Text('CxP #${cxp['CxP_ID']?.toString() ?? ''} - ${prov?['Razon_Social'] ?? 'Proveedor'}', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-              subtitle: Text('Total: \$${total.toStringAsFixed(2)} - Estatus: $estatus', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-              trailing: Text('\$${saldo.toStringAsFixed(2)}', style: TextStyle(color: Colors.red.shade400, fontWeight: FontWeight.bold, fontSize: 16)),
+              title: Text('CxP #${cxp['CxP_ID']?.toString() ?? ''} - ${prov?['Razon_Social'] ?? 'Proveedor'}', style: TextStyle(color: cs.onSurface)),
+              subtitle: Text('Total: \$${total.toStringAsFixed(2)} - Estatus: $estatus', style: TextStyle(color: cs.onSurfaceVariant)),
+              trailing: Text('\$${saldo.toStringAsFixed(2)}', style: TextStyle(color: cs.error, fontWeight: FontWeight.bold, fontSize: 16)),
             ),
           );
         },
