@@ -1,30 +1,25 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+// test/widget_test.dart
+// Tests de widgets esenciales de Adrialga (persistencia de tema y parseo).
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:adrialga_frontend/main.dart';
+import 'package:adrialga_frontend/providers/theme_notifier.dart';
+import 'package:adrialga_frontend/utils/parseo.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  group('Adrialga — lógica esencial', () {
+    test('Persistencia: tema se restaura desde SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({'theme_mode_preference': 'dark'});
+      final notifier = await ThemeNotifier.create();
+      expect(notifier.preference, ThemeModePreference.dark);
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('Parseo seguro: maneja Decimals de Prisma sin excepciones', () {
+      expect(numD('12.3400'), closeTo(12.34, 0.001));
+      expect(numD(null), 0.0);
+      expect(numD('abc'), 0.0);
+    });
   });
 }

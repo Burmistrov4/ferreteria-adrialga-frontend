@@ -502,7 +502,7 @@ class _PosScreenState extends State<PosScreen> {
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    height: 46,
+                    height: 48,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.point_of_sale),
                       label: const Text(
@@ -619,9 +619,8 @@ class _CartItemTileState extends State<_CartItemTile> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.remove_circle_outline, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.remove_circle_outline, size: 24),
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                   onPressed: () =>
                       widget.onQuantityChanged(widget.item.cantidad - 1),
                 ),
@@ -657,9 +656,8 @@ class _CartItemTileState extends State<_CartItemTile> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.add_circle_outline, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.add_circle_outline, size: 24),
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                   onPressed: () =>
                       widget.onQuantityChanged(widget.item.cantidad + 1),
                 ),

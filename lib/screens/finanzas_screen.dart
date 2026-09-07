@@ -31,7 +31,6 @@ class _FinanzasScreenState extends State<FinanzasScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
@@ -48,9 +47,9 @@ class _FinanzasScreenState extends State<FinanzasScreen>
             color: cs.surfaceContainerLow,
             child: TabBar(
               controller: _tabController,
-              labelColor: isDark ? const Color(0xFF8B5CF6) : const Color(0xFF6D28D9),
-              unselectedLabelColor: isDark ? const Color(0xFF94A3B8) : Colors.grey,
-              indicatorColor: isDark ? const Color(0xFF8B5CF6) : const Color(0xFF6D28D9),
+              labelColor: cs.primary,
+              unselectedLabelColor: cs.onSurfaceVariant,
+              indicatorColor: cs.primary,
               tabs: const [
                 Tab(icon: Icon(Icons.account_balance), text: 'Caja'),
                 Tab(icon: Icon(Icons.trending_up), text: 'Patrimonio'),

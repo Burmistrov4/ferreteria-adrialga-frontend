@@ -59,9 +59,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
           child: SizedBox(
             width: 380,
             child: Card(
@@ -116,8 +117,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: ElevatedButton(
                         onPressed: _loading ? null : _handleLogin,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
                         ),
                         child: _loading
                             ? const SizedBox(
@@ -139,6 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

@@ -22,6 +22,8 @@ String _moneda(dynamic v) {
   return n.toStringAsFixed(2);
 }
 
+double _parseNum(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0.0;
+
 /// Fuente única de verdad de los 8 módulos numerados del sistema.
 /// El Grid del Dashboard y el Drawer/Sidebar renderizan AMBOS desde esta
 /// lista, garantizando que números, nombres, iconos y destinos coincidan
@@ -44,29 +46,33 @@ class _ModuloSistema {
   );
 }
 
-const List<_ModuloSistema> _modulosSistema = [
-  _ModuloSistema(1, 'Ventas / POS', 'OPERACIÓN', Icons.point_of_sale,
-      Colors.blueAccent, PosScreen()),
-  _ModuloSistema(2, 'Facturas', 'OPERACIÓN', Icons.receipt_long,
-      Colors.green, FacturasScreen()),
-  _ModuloSistema(3, 'Clientes', 'OPERACIÓN', Icons.people, Colors.teal,
-      ClientesScreen()),
-  _ModuloSistema(
-      4, 'Productos', 'OPERACIÓN', Icons.inventory_2,
-      Color(0xFFF59E0B), InventarioScreen()),
-  _ModuloSistema(5, 'Entradas', 'OPERACIÓN',
-      Icons.add_shopping_cart, Colors.purple, EntradasScreen()),
-  _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
-      Colors.indigo, ProveedoresScreen()),
-  // Módulo 7: las métricas profundas viven en el propio Dashboard —
-  // _abrirModulo hace scroll a esa sección (ver _irAMetricas).
-  _ModuloSistema(7, 'Métricas Profundas', 'ADMINISTRACIÓN', Icons.insights,
-      Colors.deepOrange, null),
-  _ModuloSistema(8, 'Finanzas & Caja', 'ADMINISTRACIÓN',
-      Icons.account_balance_wallet, Color(0xFF8B5CF6), FinanzasScreen()),
-  _ModuloSistema(9, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
-      Colors.blueGrey, ConfiguracionScreen()),
-];
+/// Paleta de módulos basada en tokens de ColorScheme para consistencia
+/// light/dark automática. Se resuelve en tiempo de build().
+List<_ModuloSistema> _modulosSistema(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  return [
+    _ModuloSistema(1, 'Ventas / POS', 'OPERACIÓN', Icons.point_of_sale,
+        scheme.primary, PosScreen()),
+    _ModuloSistema(2, 'Facturas', 'OPERACIÓN', Icons.receipt_long,
+        scheme.secondary, FacturasScreen()),
+    _ModuloSistema(3, 'Clientes', 'OPERACIÓN', Icons.people,
+        scheme.tertiary, ClientesScreen()),
+    _ModuloSistema(4, 'Productos', 'OPERACIÓN', Icons.inventory_2,
+        const Color(0xFFF59E0B), InventarioScreen()), // Amber (neutro dark/light)
+    _ModuloSistema(5, 'Entradas', 'OPERACIÓN',
+        Icons.add_shopping_cart, const Color(0xFF8B5CF6), EntradasScreen()), // Violet
+    _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
+        const Color(0xFF4F46E5), ProveedoresScreen()), // Indigo
+    // Módulo 7: las métricas profundas viven en el propio Dashboard —
+    // _abrirModulo hace scroll a esa sección (ver _irAMetricas).
+    _ModuloSistema(7, 'Métricas Profundas', 'ADMINISTRACIÓN', Icons.insights,
+        const Color(0xFFEA580C), null), // Deep Orange
+    _ModuloSistema(8, 'Finanzas & Caja', 'ADMINISTRACIÓN',
+        Icons.account_balance_wallet, const Color(0xFF7C3AED), FinanzasScreen()), // Purple
+    _ModuloSistema(9, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
+        const Color(0xFF64748B), ConfiguracionScreen()), // Slate
+  ];
+}
 
 class _MetricaCard extends StatelessWidget {
   final IconData icon;
@@ -576,12 +582,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final serie = (s['serie'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final caja = (s['cajaDiaria'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final alertas = (s['alertasStock'] as List<dynamic>?) ?? const [];
-    double num(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0.0;
 
     // 1) Margen de ganancia: umbral ferretería sano ≈ 25%.
-    final pctMargen = num(rent['porcentaje']);
-    final margenUsd = num(rent['margenUsd']);
-    if (num(ventas['montoTotal']) > 0) {
+    final pctMargen = _parseNum(rent['porcentaje']);
+    final margenUsd = _parseNum(rent['margenUsd']);
+    if (_parseNum(ventas['montoTotal']) > 0) {
       if (pctMargen < 15) {
         insights.add((
           icon: Icons.trending_down,
@@ -614,8 +619,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // 2) Tendencia: compara los dos últimos tramos de la serie.
     if (serie.length >= 2) {
-      final previo = num(serie[serie.length - 2]['montoBs']);
-      final actual = num(serie[serie.length - 1]['montoBs']);
+      final previo = _parseNum(serie[serie.length - 2]['montoBs']);
+      final actual = _parseNum(serie[serie.length - 1]['montoBs']);
       if (previo > 0) {
         final variacion = ((actual - previo) / previo) * 100;
         if (variacion <= -15) {
@@ -644,9 +649,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (serie.length >= 3) {
       Map<String, dynamic> mejor = serie.first;
       for (final f in serie) {
-        if (num(f['montoBs']) > num(mejor['montoBs'])) mejor = f;
+        if (_parseNum(f['montoBs']) > _parseNum(mejor['montoBs'])) mejor = f;
       }
-      if (num(mejor['montoBs']) > 0) {
+      if (_parseNum(mejor['montoBs']) > 0) {
         insights.add((
           icon: Icons.schedule,
           color: Colors.deepPurple,
@@ -674,10 +679,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // 5) Concentración de cobros: método dominante del período.
     if (caja.isNotEmpty) {
-      final total = caja.fold<double>(0, (t, c) => t + num(c['monto']));
+      final total = caja.fold<double>(0, (t, c) => t + _parseNum(c['monto']));
       if (total > 0) {
         final dominante = caja.first; // ya viene ordenado desc por el backend
-        final pct = num(dominante['monto']) / total * 100;
+        final pct = _parseNum(dominante['monto']) / total * 100;
         if (pct >= 60) {
           insights.add((
             icon: Icons.account_balance_wallet,
@@ -1223,7 +1228,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.7,
-      children: _modulosSistema
+      children: _modulosSistema(context)
           .map((m) => _tarjetaModulo(m, badge: _badgeForModule(m)))
           .toList(),
     );
@@ -1399,21 +1404,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   letterSpacing: 1.1,
                 ),
               ),
             ),
-            ..._modulosSistema
+            ..._modulosSistema(context)
                 .where((m) => m.seccion == seccion)
                 .map(_drawerItem),
           ],
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text(
+            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
+            title: Text(
               'Cerrar sesión',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
             onTap: _cerrarSesion,
           ),

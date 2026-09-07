@@ -1,8 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../utils/parseo.dart';
 
 /// Parseo seguro: Prisma serializa Decimal como String, nunca castear directo.
-double _numD(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0.0;
+double _numD(dynamic v) => numD(v);
 
 /// Tab de Caja con control de turno: apertura (arqueo inicial) y cierre
 /// (arqueo con validacion de saldo). Consume `/api/caja/*`.
@@ -216,6 +217,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     if (_cargando) return const Center(child: CircularProgressIndicator());
     if (_data == null) {
       return const Center(child: Text('Error al cargar caja'));
@@ -231,7 +233,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
         padding: const EdgeInsets.all(16),
         children: [
           Card(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            color: isDark ? cs.surfaceContainerHighest : cs.surface,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -299,7 +301,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
           if (movimientos.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('Sin movimientos', style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey))),
+              child: Center(child: Text('Sin movimientos', style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey.shade600))),
             )
           else
             ...movimientos.map<Widget>((m) {
@@ -331,7 +333,6 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
               final diferencia = _numD(a['diferencia']);
               final cuadrado = diferencia.abs() < 0.01;
               final esAbierto = a['estado'] == 'ABIERTA';
-              final cs = Theme.of(context).colorScheme;
               return Card(
                 color: cs.surfaceContainerLow,
                 margin: const EdgeInsets.only(bottom: 8),
