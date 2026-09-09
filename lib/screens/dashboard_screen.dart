@@ -719,6 +719,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
 
+    // 6) Asistente de Negocio (analítica de 30 días del backend).
+    final asist = (s['asistente'] as Map<String, dynamic>?) ?? const {};
+    final muerto =
+        (asist['inventarioMuerto'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final margenLista =
+        (asist['alertasMargen'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final rot =
+        (asist['rotacion'] as Map<String, dynamic>?) ?? const {};
+    final mayor =
+        (rot['mayorRotacion'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+
+    if (muerto.isNotEmpty) {
+      final valMuerto = muerto.fold<double>(
+          0, (t, p) => t + _parseNum(p['valorDolares']));
+      final p1 = muerto.first;
+      insights.add((
+        icon: Icons.dangerous,
+        color: Theme.of(context).colorScheme.error,
+        titulo: 'Inventario muerto: ${muerto.length} producto(s)',
+        mensaje:
+            '\$${_moneda(valMuerto)} estancados sin ventas en 30 días. Ej: "${p1['nombre']}" (${p1['stock']} uds). Promociona o descuenta por lote.',
+        accion: () => _navegar(InventarioScreen()),
+      ));
+    }
+
+    for (final p in margenLista.take(3)) {
+      final pct = _parseNum(p['margenPct']);
+      final perdida = pct < 0;
+      insights.add((
+        icon: Icons.trending_down,
+        color: perdida
+            ? Theme.of(context).colorScheme.error
+            : Colors.orange,
+        titulo: 'Margen ${perdida ? 'a pérdida' : 'bajo'} · ${p['nombre']}',
+        mensaje:
+            '${pct.toStringAsFixed(1)}% (precio \$${_moneda(p['precioDolar'])} vs costo \$${_moneda(p['costoDolar'])}). Reevalúa costo de compra o precio.',
+        accion: () => _navegar(InventarioScreen()),
+      ));
+    }
+
+    if (mayor.isNotEmpty) {
+      final t = mayor.first;
+      insights.add((
+        icon: Icons.local_fire_department,
+        color: Colors.green,
+        titulo: 'Alta rotación · ${t['nombre']}',
+        mensaje:
+            'Índice ${t['indice']} (${t['unidades']} uds en 30 días vs ${t['stock']} en stock). Garantiza reposición.',
+        accion: () => _navegar(InventarioScreen()),
+      ));
+    }
+
     return insights;
   }
 
@@ -742,7 +794,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        ...insights.take(4).map((i) => Padding(
+        ...insights.take(7).map((i) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Card(
                 elevation: 1,
@@ -1171,7 +1223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 10),
           Card(
             elevation: 2,
-            color: Colors.red.shade50,
+            color: Theme.of(context).colorScheme.errorContainer,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -1185,18 +1237,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         dense: true,
                         leading: Icon(
                           Icons.warning_amber,
-                          color: Colors.red.shade700,
+                          color: Theme.of(context).colorScheme.error,
                         ),
                         title: Text(
                           (p['Nombre'] ?? '').toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onErrorContainer,
                           ),
                         ),
                         subtitle: Text(
                           'Stock: ${p['Stock_Actual']} (Mín: ${p['Stock_Minimo']})',
-                          style: const TextStyle(fontSize: 11),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onErrorContainer,
+                          ),
                         ),
                         // Banner accionable → Entradas con precarga de los
                         // productos con quiebre (producto tocado preseleccionado).
