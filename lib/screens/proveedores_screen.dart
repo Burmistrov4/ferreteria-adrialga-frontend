@@ -78,7 +78,9 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
                 TextField(
                   controller: emailCtrl,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Correo Electrónico'),
+                  decoration: const InputDecoration(
+                    labelText: 'Correo Electrónico',
+                  ),
                 ),
                 TextField(
                   controller: direccionCtrl,
@@ -128,7 +130,7 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
             const SnackBar(content: Text('Proveedor creado exitosamente')),
           );
         } else {
-final cs = Theme.of(context).colorScheme;
+          final cs = Theme.of(context).colorScheme;
           final detalle = res['error']?.toString().trim() ?? '';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -179,35 +181,36 @@ final cs = Theme.of(context).colorScheme;
         body: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _proveedores.isEmpty
-                ? const Center(child: Text('No hay proveedores registrados.'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _proveedores.length,
-                    itemBuilder: (context, index) {
-                      final prov = _proveedores[index] as Map<String, dynamic>;
-                      final rif = prov['RIF_Cedula']?.toString() ?? 'S/R';
-                      final razon = prov['Razon_Social']?.toString() ?? 'Sin Nombre';
-                      final telefono = prov['Telefono']?.toString() ?? 'N/A';
-                      return Card(
-                        elevation: 1,
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: cs.primaryContainer,
-                            child: Icon(
-                              Icons.local_shipping,
-                              color: cs.onPrimaryContainer,
-                            ),
-                          ),
-                          title: Text(
-                            razon,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text('RIF: $rif | Tel: $telefono'),
+            ? const Center(child: Text('No hay proveedores registrados.'))
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _proveedores.length,
+                itemBuilder: (context, index) {
+                  final prov = _proveedores[index] as Map<String, dynamic>;
+                  final rif = prov['RIF_Cedula']?.toString() ?? 'S/R';
+                  final razon =
+                      prov['Razon_Social']?.toString() ?? 'Sin Nombre';
+                  final telefono = prov['Telefono']?.toString() ?? 'N/A';
+                  return Card(
+                    elevation: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: cs.primaryContainer,
+                        child: Icon(
+                          Icons.local_shipping,
+                          color: cs.onPrimaryContainer,
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                      title: Text(
+                        razon,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text('RIF: $rif | Tel: $telefono'),
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }
