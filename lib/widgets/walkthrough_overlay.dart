@@ -126,8 +126,30 @@ class WalkthroughOverlay extends StatefulWidget {
   State<WalkthroughOverlay> createState() => _WalkthroughOverlayState();
 }
 
-class _WalkthroughOverlayState extends State<WalkthroughOverlay> {
+class _WalkthroughOverlayState extends State<WalkthroughOverlay>
+    with SingleTickerProviderStateMixin {
   int _index = 0;
+  late final AnimationController _pulse;
+  late final Animation<double> _escala;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pulsación continua para hacer el tutorial más vivo e intuitivo.
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
+    _escala = Tween<double>(begin: 0.94, end: 1.06).animate(
+      CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   bool get _esUltimo => _index == widget.pasos.length - 1;
 
@@ -172,18 +194,28 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Icono del paso.
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: cs.primaryContainer,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            _paso.icono,
-                            size: 38,
-                            color: cs.onPrimaryContainer,
+                        // Icono del paso (con pulsación animada: más vivo e intuitivo).
+                        ScaleTransition(
+                          scale: _escala,
+                          child: Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: cs.primary.withValues(alpha: 0.35),
+                                  blurRadius: 12,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _paso.icono,
+                              size: 40,
+                              color: cs.onPrimaryContainer,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -259,15 +291,27 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay> {
                                 child: const Text('Atrás'),
                               ),
                             const SizedBox(width: 8),
-                            FilledButton(
-                              onPressed: _siguiente,
-                              style: FilledButton.styleFrom(
-                                minimumSize: Size(_esUltimo ? 140 : 120, 48),
-                                backgroundColor: cs.primary,
-                                foregroundColor: cs.onPrimary,
-                              ),
-                              child: Text(
-                                _esUltimo ? 'Finalizar' : 'Siguiente',
+                            // Botón principal con rebote vertical (más visible).
+                            AnimatedBuilder(
+                              animation: _escala,
+                              builder: (context, child) {
+                                final dy = -3.0 * (_escala.value - 1.0);
+                                return Transform.translate(
+                                  offset: Offset(0, dy),
+                                  child: child,
+                                );
+                              },
+                              child: FilledButton(
+                                onPressed: _siguiente,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: Size(_esUltimo ? 140 : 120, 48),
+                                  backgroundColor: cs.primary,
+                                  foregroundColor: cs.onPrimary,
+                                  elevation: 4,
+                                ),
+                                child: Text(
+                                  _esUltimo ? 'Finalizar' : 'Siguiente',
+                                ),
                               ),
                             ),
                           ],
