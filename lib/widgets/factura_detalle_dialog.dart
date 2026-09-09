@@ -251,6 +251,12 @@ class FacturaDetalleDialog extends StatelessWidget {
               '\$${f.totalGeneral.toStringAsFixed(2)}',
               bold: true,
             ),
+            if ((f.tasaCambio ?? 0) > 0)
+              _row(
+                'TOTAL Bs (SENIAT):',
+                'Bs. ${(f.totalGeneral * (f.tasaCambio ?? 0)).toStringAsFixed(2)}',
+                bold: true,
+              ),
             const SizedBox(height: 10),
             // Botones responsivos: en móvil se apilan
             esMovil
