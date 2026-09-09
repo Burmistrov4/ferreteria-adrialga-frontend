@@ -118,7 +118,9 @@ class _CobroDialogState extends State<CobroDialog> {
           return Container(
             width: ancho,
             padding: const EdgeInsets.all(20.0),
-        child: Column(
+            // Scroll vertical: en móvil el diálogo no desborda con el teclado.
+            child: SingleChildScrollView(
+              child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -208,46 +210,8 @@ class _CobroDialogState extends State<CobroDialog> {
               ],
             ),
             const SizedBox(height: 12),
-            // Campos de Pago
-            Row(
-              children: [
-                Expanded(
-                  child: _buildInputField(
-                    controller: _usdEfectivoController,
-                    label: 'Efectivo (\$ USD)',
-                    icon: Icons.payments,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildInputField(
-                    controller: _vesEfectivoController,
-                    label: 'Efectivo (Bs. VES)',
-                    icon: Icons.money_off,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildInputField(
-                    controller: _pagoMovilController,
-                    label: 'Pago Móvil (Bs.)',
-                    icon: Icons.phone_android,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildInputField(
-                    controller: _puntoVentaController,
-                    label: 'Punto de Venta (Bs.)',
-                    icon: Icons.credit_card,
-                  ),
-                ),
-              ],
-            ),
+            // Campos de Pago (responsivos: apilados en pantallas angostas)
+            _camposPago(ancho),
             const SizedBox(height: 10),
             // Referencia del pago electrónico (Pago Móvil / Punto de Venta).
             // Opcional: se guarda en la factura/pagos incluso si el pago
@@ -436,7 +400,8 @@ class _CobroDialogState extends State<CobroDialog> {
             ),
           ],
         ),
-          );
+        ),
+      );
         },
       ),
     );
@@ -526,6 +491,64 @@ class _CobroDialogState extends State<CobroDialog> {
         isDense: true,
       ),
       onChanged: (_) => setState(() {}),
+    );
+  }
+
+  /// Campos de pago: en 2 columnas si hay ancho, apilados verticalmente en
+  /// móvil (<380dp) para evitar el RenderFlex overflow horizontal.
+  Widget _camposPago(double ancho) {
+    final fUsd = _buildInputField(
+      controller: _usdEfectivoController,
+      label: 'Efectivo USD',
+      icon: Icons.payments,
+    );
+    final fBs = _buildInputField(
+      controller: _vesEfectivoController,
+      label: 'Efectivo Bs',
+      icon: Icons.money_off,
+    );
+    final fMovil = _buildInputField(
+      controller: _pagoMovilController,
+      label: 'Pago Móvil',
+      icon: Icons.phone_android,
+    );
+    final fPunto = _buildInputField(
+      controller: _puntoVentaController,
+      label: 'Punto de Venta',
+      icon: Icons.credit_card,
+    );
+
+    if (ancho < 380) {
+      return Column(
+        children: [
+          fUsd,
+          const SizedBox(height: 10),
+          fBs,
+          const SizedBox(height: 10),
+          fMovil,
+          const SizedBox(height: 10),
+          fPunto,
+        ],
+      );
+    }
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: fUsd),
+            const SizedBox(width: 10),
+            Expanded(child: fBs),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(child: fMovil),
+            const SizedBox(width: 10),
+            Expanded(child: fPunto),
+          ],
+        ),
+      ],
     );
   }
 }

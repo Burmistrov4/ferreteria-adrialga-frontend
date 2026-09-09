@@ -21,7 +21,7 @@ class ImpresionService {
   static String _fmt(double v) => v.toStringAsFixed(2);
 
 static String _truncar(String s, int max) =>
-      s.length <= max ? s : '${s.substring(0, max - 1)}…';
+      s.length <= max ? s : '${s.substring(0, max - 1)}...';
 
   static String _fmtFecha(DateTime? dt) {
     if (dt == null) return '';
@@ -68,7 +68,13 @@ static String _truncar(String s, int max) =>
 
     doc.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.roll80,
+        // roll80 tiene altura infinita (rompe MultiPage): usar ancho 80mm con
+        // altura finita de 297mm (más alto que un ticket típico).
+        pageFormat: PdfPageFormat(
+          80 * PdfPageFormat.mm,
+          297 * PdfPageFormat.mm,
+          marginAll: 0,
+        ),
         margin: const pw.EdgeInsets.all(8),
         build: (_) => [
           // ── Encabezado del establecimiento ──
@@ -171,7 +177,7 @@ static String _truncar(String s, int max) =>
             _row('Tasa BCV:', '${f.tasaCambio!.toStringAsFixed(4)} Bs/\$'),
           if (f.pagos.isNotEmpty) ...[
             pw.SizedBox(height: 3),
-            _ctr('— Métodos de pago —', size: 8, color: PdfColors.grey700),
+            _ctr('- Métodos de pago -', size: 8, color: PdfColors.grey700),
             ...f.pagos.map((p) => _row(
                   p.metodo,
                   p.esDivisa
