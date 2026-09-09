@@ -169,121 +169,157 @@ class _ProductoDialogState extends State<ProductoDialog> {
     final isEditing = widget.producto != null;
     return AlertDialog(
       title: Text(isEditing ? 'Editar Producto' : 'Nuevo Producto'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _skuController,
-                decoration: const InputDecoration(labelText: 'SKU / Código *'),
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Requerido' : null,
-              ),
-              TextFormField(
-                controller: _nombreController,
-                decoration: const InputDecoration(labelText: 'Nombre *'),
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Requerido' : null,
-              ),
-              TextFormField(
-                controller: _descripcionController,
-                decoration: const InputDecoration(labelText: 'Descripción'),
-              ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      content: LayoutBuilder(
+        builder: (context, constraints) {
+          final dosCol = constraints.maxWidth >= 600;
+          final cs = Theme.of(context).colorScheme;
+          return SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _selectedCategoriaId,
-                      decoration: const InputDecoration(labelText: 'Categoría *'),
-                      items: _categorias.map((cat) {
-                        return DropdownMenuItem<int>(
-                          value: cat.categoriaId,
-                          child: Text(cat.nombreCategoria),
-                        );
-                      }).toList(),
-                      onChanged: (val) =>
-                          setState(() => _selectedCategoriaId = val),
-                      validator: (val) =>
-                          val == null ? 'Seleccione una categoría' : null,
+                  TextFormField(
+                    controller: _skuController,
+                    decoration: const InputDecoration(
+                      labelText: 'SKU / Código *',
+                    ),
+                    validator: (val) =>
+                        val == null || val.isEmpty ? 'Requerido' : null,
+                  ),
+                  TextFormField(
+                    controller: _nombreController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre *',
+                    ),
+                    validator: (val) =>
+                        val == null || val.isEmpty ? 'Requerido' : null,
+                  ),
+                  TextFormField(
+                    controller: _descripcionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Descripción',
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Tooltip(
-                      message: 'Crear nueva categoría',
-                      child: OutlinedButton.icon(
-                        onPressed: _crearCategoriaInline,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Nueva Categoría'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 14,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          initialValue: _selectedCategoriaId,
+                          decoration: const InputDecoration(
+                            labelText: 'Categoría *',
                           ),
-                          foregroundColor: Colors.blueAccent,
+                          items: _categorias.map((cat) {
+                            return DropdownMenuItem<int>(
+                              value: cat.categoriaId,
+                              child: Text(cat.nombreCategoria),
+                            );
+                          }).toList(),
+                          onChanged: (val) =>
+                              setState(() => _selectedCategoriaId = val),
+                          validator: (val) =>
+                              val == null ? 'Seleccione una categoría' : null,
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _precioController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: IconButton(
+                          tooltip: 'Crear nueva categoría',
+                          onPressed: _crearCategoriaInline,
+                          icon: Icon(Icons.add, color: cs.primary),
+                        ),
                       ),
+                    ],
+                  ),
+                  // Responsive: en tablet/desktop dos columnas; en móvil apilados.
+                  if (dosCol) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _precioController,
+                            keyboardType: const TextInputType
+                                .numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Precio Venta (\$)*',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _costoController,
+                            keyboardType: const TextInputType
+                                .numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Costo Promedio (\$)',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _stockActualController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Stock Actual *',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _stockMinimoController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Stock Mínimo',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    TextFormField(
+                      controller: _precioController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Precio Venta (\$)*',
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextFormField(
+                    TextFormField(
                       controller: _costoController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Costo Promedio (\$)',
                       ),
                     ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
+                    TextFormField(
                       controller: _stockActualController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'Stock Actual *',
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextFormField(
+                    TextFormField(
                       controller: _stockMinimoController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'Stock Mínimo',
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
       actions: [
         TextButton(
@@ -292,11 +328,11 @@ class _ProductoDialogState extends State<ProductoDialog> {
         ),
         ElevatedButton(
           onPressed: _guardar,
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-          child: Text(
-            isEditing ? 'Actualizar' : 'Guardar',
-            style: const TextStyle(color: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
           ),
+          child: Text(isEditing ? 'Actualizar' : 'Guardar'),
         ),
       ],
     );

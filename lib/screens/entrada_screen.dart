@@ -91,7 +91,7 @@ Future<void> _cargarProductos() async {
           if (p.productoId == idInicial) {
             setState(() {
               _productoSeleccionado = p;
-              _costoController.text = p.costoPromedio.toString();
+              _costoController.text = _costoSugerido(p);
             });
             break;
           }
@@ -105,6 +105,15 @@ Future<void> _cargarProductos() async {
         );
       }
     }
+  }
+
+  /// Sugiere el costo de compra: si el producto ya tiene costo promedio, lo
+  /// usa (compra previa conocida); si no, propone un costo que preserve un
+  /// margen de reventa de ~30% sobre el precio de venta (Precio / 1.30).
+  String _costoSugerido(ProductoModel p) {
+    if (p.costoPromedio > 0) return p.costoPromedio.toStringAsFixed(2);
+    if (p.precioVenta > 0) return (p.precioVenta / 1.30).toStringAsFixed(2);
+    return '0.00';
   }
 
   Future<void> _registrarEntrada() async {
@@ -232,8 +241,7 @@ const Text(
                               onPressed: () {
                                 setState(() {
                                   _productoSeleccionado = p;
-                                  _costoController.text =
-                                      p.costoPromedio.toString();
+                                  _costoController.text = _costoSugerido(p);
                                 });
                               },
                             ),
@@ -256,11 +264,11 @@ const Text(
                         ),
                       );
                     }).toList(),
-                    onChanged: (val) {
+onChanged: (val) {
                       setState(() {
                         _productoSeleccionado = val;
                         if (val != null) {
-                          _costoController.text = val.costoPromedio.toString();
+                          _costoController.text = _costoSugerido(val);
                         }
                       });
                     },
@@ -288,39 +296,37 @@ const Text(
                         : const Text('Seleccione un proveedor'),
                   ),
                   const SizedBox(height: 16),
-                  // Selector de Forma de Pago (Contado / Crédito)
-                  Row(
-                    children: [
-                      Icon(Icons.payment, size: 20, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Forma de Pago:',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment<String>(
-                              value: 'Contado',
-                              label: Text('Contado'),
-                              icon: Icon(Icons.money, size: 18),
-                            ),
-                            ButtonSegment<String>(
-                              value: 'Credito',
-                              label: Text('Crédito'),
-                              icon: Icon(Icons.credit_card, size: 18),
-                            ),
-                          ],
-                          selected: {_formaPago},
-                          onSelectionChanged: (Set<String> newSelection) {
-                            setState(() {
-                              _formaPago = newSelection.first;
-                            });
-                          },
+// Selector de Forma de Pago (Contado / Crédito)
+                  Text(
+                    'Forma de Pago',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<String>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment<String>(
+                          value: 'Contado',
+                          label: Text('Contado'),
                         ),
-                      ),
-                    ],
+                        ButtonSegment<String>(
+                          value: 'Credito',
+                          label: Text('Crédito'),
+                        ),
+                      ],
+                      selected: {_formaPago},
+                      onSelectionChanged: (Set<String> newSelection) {
+                        setState(() {
+                          _formaPago = newSelection.first;
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
