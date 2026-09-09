@@ -771,8 +771,11 @@ class _CartItemTileState extends State<_CartItemTile> {
                   IconButton(
                     icon: const Icon(Icons.remove_circle_outline, size: 24),
                     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                    onPressed: () =>
-                        widget.onQuantityChanged(widget.item.cantidad - 1),
+                    // No bajar de 1 con el botón (evita borrados accidentales).
+                    onPressed: widget.item.cantidad <= 1
+                        ? null
+                        : () =>
+                            widget.onQuantityChanged(widget.item.cantidad - 1),
                   ),
                   const SizedBox(width: 4),
                   SizedBox(

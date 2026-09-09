@@ -359,8 +359,21 @@ class _CobroDialogState extends State<CobroDialog> {
                             // Validar fondos en caja antes de procesar
                             final vueltoUSD = _diferenciaUSD > 0 ? _diferenciaUSD : 0.0;
                             final vueltoVES = _diferenciaVES > 0 ? _diferenciaVES : 0.0;
-                            
-                            if (vueltoUSD > 0 || vueltoVES > 0) {
+
+                            // Solo se exige "cambio de gaveta" si el excedente
+                            // proviene de EFECTIVO físico y es un cambio real
+                            // (≥ media centésima). Un excedente sub-centavo o
+                            // generado por Punto de Venta/Pago Móvil NO requiere
+                            // dinero del cajón (evita el falso "Fondos insuficientes").
+                            final excesoEfectivoUSD =
+                                _montoUsdEfectivo - _cargoTotalUSD;
+                            final excesoEfectivoVES =
+                                _montoVesEfectivo - (_cargoTotalUSD * widget.tasaCambio);
+                            final requiereCambioGaveta =
+                                excesoEfectivoUSD >= 0.005 ||
+                                excesoEfectivoVES >= 0.005;
+
+                            if (requiereCambioGaveta) {
                               final puedeDarVuelto = await _verificarFondosCaja(
                                 vueltoUSD: vueltoUSD,
                                 vueltoVES: vueltoVES,

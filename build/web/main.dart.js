@@ -8397,8 +8397,8 @@ aLc:function aLc(a){this.a=a},
 aLe:function aLe(a){this.a=a},
 aLf:function aLf(a,b){this.a=a
 this.b=b},
-cm(){var s,r="https://ferreteria-adrialga-backend-production.up.railway.app/api"
-if(!A.n.lz(r,"/api"))s=A.n.lz(r,"/")?"https://ferreteria-adrialga-backend-production.up.railway.app/apiapi":"https://ferreteria-adrialga-backend-production.up.railway.app/api/api"
+cm(){var s,r="https://ferreteria-adrialga-backend-production.up.railway.app"
+if(!A.n.lz(r,"/api"))s=A.n.lz(r,"/")?"https://ferreteria-adrialga-backend-production.up.railway.appapi":"https://ferreteria-adrialga-backend-production.up.railway.app/api"
 else s=r
 return s},
 d5(){var s,r=t.N
