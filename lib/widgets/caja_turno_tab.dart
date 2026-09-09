@@ -70,8 +70,8 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
 
   Future<void> _abrir() async {
     final monto = double.tryParse(_montoInicialCtrl.text.trim()) ?? 0;
-    if (monto < 0) {
-      _mensaje('El monto inicial no puede ser negativo', error: true);
+    if (monto <= 0) {
+      _mensaje('El fondo base de caja debe ser mayor a \$0.00', error: true);
       return;
     }
     setState(() => _trabajando = true);
@@ -135,40 +135,20 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
   void _mostrarDialogoAbrir() {
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Abrir caja'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _montoInicialCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Monto inicial (USD)', prefixText: '\$ '),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _obsCtrl,
-              decoration: const InputDecoration(labelText: 'Observacion (opcional)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _abrir();
-            },
-            child: const Text('Abrir'),
-          ),
-        ],
+      builder: (ctx) => _DialogoAbrirCaja(
+        montoCtrl: _montoInicialCtrl,
+        obsCtrl: _obsCtrl,
+        onAbrir: () {
+          Navigator.pop(ctx);
+          _abrir();
+        },
       ),
     );
   }
+
+  /// Dialogo de apertura autocontenido: exige fondo base > $0 y la confirmacion
+  /// explicita de la Tasa BCV del dia antes de habilitar el boton "Abrir".
+  /// El `StatefulBuilder`/estado local evita redibujar la vista de caja completa.
 
   void _mostrarDialogoCerrar() {
     _montoContadoCtrl.text = _saldo.toStringAsFixed(2);
@@ -268,11 +248,11 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('Ingresos', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                          Text('+\$${_numD(resumen['ingresosUSDTurno']).toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                          Text('Ingresos', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          Text('+\$${_numD(resumen['ingresosUSDTurno']).toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.tertiary, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Text('Egresos', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                          Text('-\$${_numD(resumen['egresosUSDTurno']).toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                          Text('Egresos', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          Text('-\$${_numD(resumen['egresosUSDTurno']).toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -307,7 +287,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
             ...movimientos.map<Widget>((m) {
               final esIngreso = m['Tipo'] == 'INGRESO';
               return Card(
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                color: isDark ? Theme.of(context).colorScheme.surfaceContainerHighest : Colors.white,
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   leading: CircleAvatar(
@@ -333,17 +313,21 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
               final diferencia = _numD(a['diferencia']);
               final cuadrado = diferencia.abs() < 0.01;
               final esAbierto = a['estado'] == 'ABIERTA';
+              // Verde = cuadra; rojo = faltante (entregó de menos); ámbar = sobrante.
+              final Color indicador = cuadrado
+                  ? Colors.green
+                  : (diferencia > 0 ? cs.error : cs.tertiary);
               return Card(
                 color: cs.surfaceContainerLow,
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: cuadrado
-                        ? Colors.green.withValues(alpha: 0.2)
-                        : Colors.orange.withValues(alpha: 0.25),
+                    backgroundColor: indicador.withValues(alpha: 0.15),
                     child: Icon(
-                      esAbierto ? Icons.timelapse : (cuadrado ? Icons.check : Icons.warning_amber),
-                      color: cuadrado ? Colors.green : Colors.orange,
+                      esAbierto
+                          ? Icons.timelapse
+                          : (cuadrado ? Icons.check : Icons.warning_amber),
+                      color: esAbierto ? cs.primary : indicador,
                     ),
                   ),
                   title: Text(
@@ -351,15 +335,17 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                     style: TextStyle(color: cs.onSurface),
                   ),
                   subtitle: Text(
-                    'Entregado: \$${_numD(a['saldoEntregado']).toStringAsFixed(2)} · Esperado: \$${_numD(a['saldoEsperado']).toStringAsFixed(2)}',
+                    'Inicial: \$${_numD(a['saldoInicial']).toStringAsFixed(2)} · Entregado: \$${_numD(a['saldoEntregado']).toStringAsFixed(2)} · Esperado: \$${_numD(a['saldoEsperado']).toStringAsFixed(2)}',
                     style: TextStyle(color: cs.onSurfaceVariant),
                   ),
                   trailing: Text(
                     cuadrado
                         ? 'OK'
-                        : (diferencia > 0 ? 'Falta \$${diferencia.toStringAsFixed(2)}' : 'Sobra \$${(-diferencia).toStringAsFixed(2)}'),
+                        : (diferencia > 0
+                            ? 'Falta \$${diferencia.toStringAsFixed(2)}'
+                            : 'Sobra \$${(-diferencia).toStringAsFixed(2)}'),
                     style: TextStyle(
-                      color: cuadrado ? Colors.green : Colors.orange,
+                      color: indicador,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -368,6 +354,144 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
             }),
         ],
       ),
+    );
+  }
+}
+
+/// Diálogo de apertura de caja autocontenido.
+/// Gestión local de estado: carga la Tasa BCV del día y exige que el cajero
+/// registre un fondo base > $0 y confirme explícitamente la tasa antes de
+/// habilitar el botón "Abrir".
+class _DialogoAbrirCaja extends StatefulWidget {
+  final TextEditingController montoCtrl;
+  final TextEditingController obsCtrl;
+  final VoidCallback onAbrir;
+
+  const _DialogoAbrirCaja({
+    required this.montoCtrl,
+    required this.obsCtrl,
+    required this.onAbrir,
+  });
+
+  @override
+  State<_DialogoAbrirCaja> createState() => _DialogoAbrirCajaState();
+}
+
+class _DialogoAbrirCajaState extends State<_DialogoAbrirCaja> {
+  double? _tasa;
+  bool _tasaEsBCV = false;
+  bool _cargandoTasa = true;
+  bool _tasaConfirmada = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarTasa();
+  }
+
+  Future<void> _cargarTasa() async {
+    final tasa = await ApiService.getTasaCambio();
+    if (!mounted) return;
+    setState(() {
+      _tasa = tasa;
+      _tasaEsBCV = ApiService.lastTasaEsBCV;
+      _cargandoTasa = false;
+    });
+  }
+
+  double get _montoBase => double.tryParse(widget.montoCtrl.text.trim()) ?? 0;
+
+  bool get _habilitar =>
+      !_cargandoTasa && _montoBase > 0 && _tasaConfirmada;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('Abrir caja'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: widget.montoCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Fondo base (USD) — debe ser > 0',
+                prefixText: '\$ ',
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Confirmación obligatoria de la Tasa BCV del día.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.currency_exchange,
+                          size: 18, color: cs.primary),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _cargandoTasa
+                              ? 'Consultando tasa BCV...'
+                              : 'Tasa BCV del día: ${_tasa?.toStringAsFixed(4) ?? '--'} Bs/\$'
+                                  '${_tasaEsBCV ? '' : ' (respaldo)'}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    value: _tasaConfirmada,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      'Confirmo la Tasa BCV del día',
+                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                    ),
+                    onChanged: _cargandoTasa
+                        ? null
+                        : (v) => setState(() => _tasaConfirmada = v ?? false),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: widget.obsCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Observación (opcional)',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _habilitar ? widget.onAbrir : null,
+          child: const Text('Abrir'),
+        ),
+      ],
     );
   }
 }

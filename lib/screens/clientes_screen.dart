@@ -78,9 +78,12 @@ class _ClientesScreenState extends State<ClientesScreen> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+            child: const Text('Eliminar'),
           ),
         ],
       ),
@@ -102,6 +105,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final clientesFiltrados = _clientes.where((c) {
       final query = _filtro.toLowerCase();
       final docCompleto = '${c.tipoDocumento}-${c.numDocumento}'.toLowerCase();
@@ -109,16 +113,21 @@ class _ClientesScreenState extends State<ClientesScreen> {
           docCompleto.contains(query);
     }).toList();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gestión de Clientes'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _cargarClientes,
-          ),
-        ],
-      ),
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          title: const Text('Gestión de Clientes'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              color: cs.onPrimary,
+              onPressed: _cargarClientes,
+            ),
+          ],
+        ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -167,14 +176,14 @@ class _ClientesScreenState extends State<ClientesScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  icon: Icon(Icons.edit, color: cs.primary),
                                   onPressed: () => _abrirDialogoCliente(cliente),
                                 ),
                                 if (cliente.clienteId != null)
                                   IconButton(
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.delete,
-                                      color: Colors.red,
+                                      color: cs.error,
                                     ),
                                     onPressed: () => _eliminarCliente(cliente),
                                   ),
@@ -189,9 +198,12 @@ class _ClientesScreenState extends State<ClientesScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
         onPressed: () => _abrirDialogoCliente(),
         child: const Icon(Icons.add),
       ),
-    );
-  }
+    ),
+  );
+}
 }

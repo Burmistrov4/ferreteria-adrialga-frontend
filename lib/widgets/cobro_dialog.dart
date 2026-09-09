@@ -28,6 +28,9 @@ class _CobroDialogState extends State<CobroDialog> {
   // se persiste en la tabla `pagos` del backend aunque el pago sea en Bs.
   final _referenciaController = TextEditingController();
 
+  // Imprimir ticket térmico automáticamente tras facturar (marcado por defecto).
+  bool _imprimirTicket = true;
+
   double get _totalVES => widget.totalUSD * widget.tasaCambio;
 
   double get _montoUsdEfectivo =>
@@ -61,6 +64,13 @@ class _CobroDialogState extends State<CobroDialog> {
 
   bool get _pagoCompleto => _diferenciaUSD >= -0.01;
 
+  /// Falta por pagar: solo cuando la diferencia es negativa (deuda); >0 deshabilita
+  /// el pago. Los remanentes ≤ 0.01 USD se toleran por precisión de coma flotante.
+  double get _faltaPorPagar => _diferenciaUSD < 0 ? _diferenciaUSD.abs() : 0.0;
+
+  /// Habilita el botón CONFIRMAR PAGO únicamente cuando no hay deuda.
+  bool get _habilitarPago => _faltaPorPagar <= 0.01;
+
   void _completarMontoExactoUSD() {
     setState(() {
       _usdEfectivoController.text = widget.totalUSD.toStringAsFixed(2);
@@ -91,6 +101,11 @@ class _CobroDialogState extends State<CobroDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Acentos semánticos (éxito/error/débito fiscal) con contraste en ambos temas.
+    final verde = Colors.green.shade400;
+    final rojo = cs.error;
+    final naranja = Colors.orange.shade300;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       // Responsive: en teléfonos el diálogo ocupa el ancho disponible
@@ -123,8 +138,8 @@ class _CobroDialogState extends State<CobroDialog> {
                   ),
                   backgroundColor:
                       (widget.tasaEsBCV == true)
-                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                          : Colors.orange.withValues(alpha: 0.18),
+                          ? cs.primary.withValues(alpha: 0.15)
+                          : cs.errorContainer,
                 ),
               ],
             ),
@@ -143,14 +158,14 @@ class _CobroDialogState extends State<CobroDialog> {
                     children: [
                       const Text(
                         'Total USD',
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       Text(
                         '\$${widget.totalUSD.toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                          color: verde,
                         ),
                       ),
                     ],
@@ -160,14 +175,14 @@ class _CobroDialogState extends State<CobroDialog> {
                     children: [
                       const Text(
                         'Total VES',
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       Text(
                         'Bs. ${_totalVES.toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue,
+                          color: cs.primary,
                         ),
                       ),
                     ],
@@ -253,17 +268,17 @@ class _CobroDialogState extends State<CobroDialog> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
+                  color: naranja.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade300, width: 1),
+                  border: Border.all(
+                      color: naranja.withValues(alpha: 0.5), width: 1),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.account_balance,
-                            color: Colors.orange, size: 18),
+                        Icon(Icons.account_balance, color: naranja, size: 18),
                         const SizedBox(width: 6),
                         const Text(
                           'IGTF 3% (pagos en divisas)',
@@ -285,7 +300,7 @@ class _CobroDialogState extends State<CobroDialog> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Colors.orange.shade900,
+                        color: naranja,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -304,11 +319,11 @@ class _CobroDialogState extends State<CobroDialog> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _pagoCompleto
-                    ? Colors.green.shade50
-                    : Colors.red.shade50,
+                    ? verde.withValues(alpha: 0.10)
+                    : rojo.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _pagoCompleto ? Colors.green : Colors.red,
+                  color: _pagoCompleto ? verde : rojo,
                   width: 1,
                 ),
               ),
@@ -319,9 +334,7 @@ class _CobroDialogState extends State<CobroDialog> {
                     _pagoCompleto ? 'CAMBIO / VUELTO:' : 'FALTA POR PAGAR:',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: _pagoCompleto
-                          ? Colors.green.shade900
-                          : Colors.red.shade900,
+                      color: _pagoCompleto ? verde : rojo,
                     ),
                   ),
                   Column(
@@ -332,18 +345,14 @@ class _CobroDialogState extends State<CobroDialog> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: _pagoCompleto
-                              ? Colors.green.shade900
-                              : Colors.red.shade900,
+                          color: _pagoCompleto ? verde : rojo,
                         ),
                       ),
                       Text(
                         'Bs. ${_diferenciaVES.abs().toStringAsFixed(2)} VES',
                         style: TextStyle(
                           fontSize: 12,
-                          color: _pagoCompleto
-                              ? Colors.green.shade700
-                              : Colors.red.shade700,
+                          color: _pagoCompleto ? verde : rojo,
                         ),
                       ),
                     ],
@@ -352,6 +361,19 @@ class _CobroDialogState extends State<CobroDialog> {
               ),
             ),
             const SizedBox(height: 16),
+            CheckboxListTile(
+              value: _imprimirTicket,
+              onChanged: (v) => setState(() => _imprimirTicket = v ?? false),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              secondary: const Icon(Icons.print, size: 18),
+              title: const Text(
+                'Imprimir ticket al facturar',
+                style: TextStyle(fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -364,11 +386,11 @@ class _CobroDialogState extends State<CobroDialog> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
+                      backgroundColor: cs.primary,
+                      foregroundColor: cs.onPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _pagoCompleto
+                    onPressed: _habilitarPago
                         ? () async {
                             // Validar fondos en caja antes de procesar
                             final vueltoUSD = _diferenciaUSD > 0 ? _diferenciaUSD : 0.0;
@@ -402,6 +424,7 @@ class _CobroDialogState extends State<CobroDialog> {
                                 'tasaCambio': widget.tasaCambio,
                               },
                               'tasaCambio': widget.tasaCambio,
+                              'imprimirTicket': _imprimirTicket,
                             });
                           }
                         : null,
@@ -443,7 +466,8 @@ class _CobroDialogState extends State<CobroDialog> {
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 48),
+            icon: Icon(Icons.warning_amber_rounded,
+                        color: Theme.of(ctx).colorScheme.error, size: 48),
             title: const Text('Fondos Insuficientes en Caja'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -456,9 +480,9 @@ class _CobroDialogState extends State<CobroDialog> {
                 Text('  • VES: Bs. ${saldoVES.toStringAsFixed(2)}'),
                 if (faltanteUSD > 0 || faltanteVES > 0) ...[
                   const SizedBox(height: 8),
-                  Text('Faltante:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                  if (faltanteUSD > 0) Text('  • USD: \$${faltanteUSD.toStringAsFixed(2)}', style: TextStyle(color: Colors.red)),
-                  if (faltanteVES > 0) Text('  • VES: Bs. ${faltanteVES.toStringAsFixed(2)}', style: TextStyle(color: Colors.red)),
+                  Text('Faltante:', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.error)),
+                  if (faltanteUSD > 0) Text('  • USD: \$${faltanteUSD.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                  if (faltanteVES > 0) Text('  • VES: Bs. ${faltanteVES.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                 ],
                 const SizedBox(height: 12),
                 const Text('Sugerencia: Solicite al cliente el monto exacto o use otro método de pago.',

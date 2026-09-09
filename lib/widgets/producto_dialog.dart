@@ -111,11 +111,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-            child: const Text(
-              'Crear',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('Crear'),
           ),
         ],
       ),

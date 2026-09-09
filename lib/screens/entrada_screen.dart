@@ -1,10 +1,17 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../models/producto_model.dart';
 import '../services/api_service.dart';
+import '../services/shortcut_service.dart';
 
 class EntradasScreen extends StatefulWidget {
-  const EntradasScreen({super.key});
+  /// Producto a preseleccionar al abrir la pantalla (precarga de quiebre de stock).
+  final int? productoInicialId;
+
+  /// IDs de productos con quiebre para mostrarlos como chips de acceso rápido.
+  final List<int>? idsBajoStock;
+
+  const EntradasScreen({super.key, this.productoInicialId, this.idsBajoStock});
 
   @override
   State<EntradasScreen> createState() => _EntradasScreenState();
@@ -17,14 +24,18 @@ class _EntradasScreenState extends State<EntradasScreen> {
   final _costoController = TextEditingController();
   bool _isLoading = false;
 
-  List<dynamic> _proveedores = [];
+List<dynamic> _proveedores = [];
   dynamic _proveedorSeleccionado;
   bool _cargandoProveedores = true;
   String _formaPago = 'Contado'; // 'Contado' | 'Credito'
 
+  List<int> _idsBajoStock = [];
+
   @override
   void initState() {
     super.initState();
+    ShortcutService.setModule('entradas');
+    _idsBajoStock = widget.idsBajoStock ?? const [];
     _cargarProductos();
     _cargarProveedores();
   }
@@ -65,7 +76,7 @@ class _EntradasScreenState extends State<EntradasScreen> {
     super.dispose();
   }
 
-  Future<void> _cargarProductos() async {
+Future<void> _cargarProductos() async {
     setState(() => _isLoading = true);
     try {
       final prods = await ApiService.getProductos();
@@ -73,6 +84,19 @@ class _EntradasScreenState extends State<EntradasScreen> {
         _productos = prods;
         _isLoading = false;
       });
+      // Precarga de quiebre de stock: preseleccionar el producto inicial.
+      final idInicial = widget.productoInicialId;
+      if (idInicial != null && mounted) {
+        for (final p in _productos) {
+          if (p.productoId == idInicial) {
+            setState(() {
+              _productoSeleccionado = p;
+              _costoController.text = p.costoPromedio.toString();
+            });
+            break;
+          }
+        }
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -98,8 +122,8 @@ class _EntradasScreenState extends State<EntradasScreen> {
       return;
     }
 
-    final cantidad = int.tryParse(_cantidadController.text) ?? 0;
-    final costo = double.tryParse(_costoController.text) ?? 0.0;
+    final cantidad = int.tryParse(_cantidadController.text.trim()) ?? 0;
+    final costo = double.tryParse(_costoController.text.trim()) ?? 0.0;
 
     if (cantidad <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -159,164 +183,217 @@ class _EntradasScreenState extends State<EntradasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Entradas de Mercancía')),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Card(
-          elevation: 3,
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Recepcionar Stock',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<ProductoModel>(
-                  initialValue: _productoSeleccionado,
-                  decoration: const InputDecoration(
-                    labelText: 'Seleccionar Producto',
-                    border: OutlineInputBorder(),
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          title: const Text('Entradas de Mercancía'),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Card(
+            elevation: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+const Text(
+                    'Recepcionar Stock',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  items: _productos.map((prod) {
-                    return DropdownMenuItem<ProductoModel>(
-                      value: prod,
-                      child: Text(
-                        '${prod.skuCodigo} - ${prod.nombre} (Stock: ${prod.stockActual})',
+                  const SizedBox(height: 20),
+                  if (_idsBajoStock.isNotEmpty) ...[
+                    Text(
+                      'Pre-carga por quiebre de stock:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.error,
                       ),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    setState(() {
-                      _productoSeleccionado = val;
-                      if (val != null) {
-                        _costoController.text = val.costoPromedio.toString();
-                      }
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<dynamic>(
-                  initialValue: _proveedorSeleccionado,
-                  decoration: const InputDecoration(
-                    labelText: 'Proveedor',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _proveedores.map((prov) {
-                    final map = prov as Map;
-                    final rif = map['RIF_Cedula'] ?? 'S/R';
-                    final razon = map['Razon_Social'] ?? 'Proveedor';
-                    return DropdownMenuItem<dynamic>(
-                      value: prov,
-                      child: Text('$rif - $razon'),
-                    );
-                  }).toList(),
-                  onChanged: (val) =>
-                      setState(() => _proveedorSeleccionado = val),
-                  hint: _cargandoProveedores
-                      ? const Text('Cargando proveedores...')
-                      : const Text('Seleccione un proveedor'),
-                ),
-                const SizedBox(height: 16),
-                // Selector de Forma de Pago (Contado / Crédito)
-                Row(
-                  children: [
-                    const Icon(Icons.payment, size: 20, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Forma de Pago:',
-                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment<String>(
-                            value: 'Contado',
-                            label: Text('Contado'),
-                            icon: Icon(Icons.money, size: 18),
-                          ),
-                          ButtonSegment<String>(
-                            value: 'Credito',
-                            label: Text('Crédito'),
-                            icon: Icon(Icons.credit_card, size: 18),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: _productos
+                          .where((p) => _idsBajoStock.contains(p.productoId))
+                          .map(
+                            (p) => ActionChip(
+                              avatar: const Icon(Icons.inventory, size: 16),
+                              label: Text(
+                                '${p.skuCodigo} · ${p.nombre} (${p.stockActual})',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _productoSeleccionado = p;
+                                  _costoController.text =
+                                      p.costoPromedio.toString();
+                                });
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  DropdownButtonFormField<ProductoModel>(
+                    initialValue: _productoSeleccionado,
+                    decoration: const InputDecoration(
+                      labelText: 'Seleccionar Producto',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _productos.map((prod) {
+                      return DropdownMenuItem<ProductoModel>(
+                        value: prod,
+                        child: Text(
+                          '${prod.skuCodigo} - ${prod.nombre} (Stock: ${prod.stockActual})',
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        _productoSeleccionado = val;
+                        if (val != null) {
+                          _costoController.text = val.costoPromedio.toString();
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<dynamic>(
+                    initialValue: _proveedorSeleccionado,
+                    decoration: const InputDecoration(
+                      labelText: 'Proveedor',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _proveedores.map((prov) {
+                      final map = prov as Map;
+                      final rif = map['RIF_Cedula'] ?? 'S/R';
+                      final razon = map['Razon_Social'] ?? 'Proveedor';
+                      return DropdownMenuItem<dynamic>(
+                        value: prov,
+                        child: Text('$rif - $razon'),
+                      );
+                    }).toList(),
+                    onChanged: (val) =>
+                        setState(() => _proveedorSeleccionado = val),
+                    hint: _cargandoProveedores
+                        ? const Text('Cargando proveedores...')
+                        : const Text('Seleccione un proveedor'),
+                  ),
+                  const SizedBox(height: 16),
+                  // Selector de Forma de Pago (Contado / Crédito)
+                  Row(
+                    children: [
+                      Icon(Icons.payment, size: 20, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Forma de Pago:',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment<String>(
+                              value: 'Contado',
+                              label: Text('Contado'),
+                              icon: Icon(Icons.money, size: 18),
+                            ),
+                            ButtonSegment<String>(
+                              value: 'Credito',
+                              label: Text('Crédito'),
+                              icon: Icon(Icons.credit_card, size: 18),
+                            ),
+                          ],
+                          selected: {_formaPago},
+                          onSelectionChanged: (Set<String> newSelection) {
+                            setState(() {
+                              _formaPago = newSelection.first;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _cantidadController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Cantidad Ingresada',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _costoController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Costo Unitario Compra (\$)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.add_shopping_cart),
+                      label: _isLoading
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: cs.onPrimary,
+                              ),
+                            )
+                          : Text(_formaPago == 'Contado'
+                              ? 'Registrar Entrada (Contado)'
+                              : 'Registrar Entrada (Crédito)'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _formaPago == 'Contado'
+                            ? cs.primary
+                            : cs.secondary,
+                        foregroundColor: _formaPago == 'Contado'
+                            ? cs.onPrimary
+                            : cs.onSecondary,
+                      ),
+                      onPressed: _isLoading ? null : _registrarEntrada,
+                    ),
+                  ),
+                  if (_formaPago == 'Credito') ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cs.secondaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: cs.secondary.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: cs.onSecondaryContainer, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'En crédito: se registrará una cuenta por pagar al proveedor. No afecta caja.',
+                              style: TextStyle(fontSize: 12, color: cs.onSecondaryContainer),
+                            ),
                           ),
                         ],
-                        selected: {_formaPago},
-                        onSelectionChanged: (Set<String> newSelection) {
-                          setState(() {
-                            _formaPago = newSelection.first;
-                          });
-                        },
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _cantidadController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Cantidad Ingresada',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _costoController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Costo Unitario Compra (\$)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.add_shopping_cart),
-                    label: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(_formaPago == 'Contado'
-                            ? 'Registrar Entrada (Contado)'
-                            : 'Registrar Entrada (Crédito)'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _formaPago == 'Contado'
-                          ? Colors.green
-                          : Colors.orange,
-                    ),
-                    onPressed: _isLoading ? null : _registrarEntrada,
-                  ),
-                ),
-                if (_formaPago == 'Credito') ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'En crédito: se registrará una cuenta por pagar al proveedor. No afecta caja.',
-                            style: TextStyle(fontSize: 12, color: Colors.orange),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ),

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/factura_model.dart';
+import '../services/api_service.dart';
 import '../services/factura_pdf_service.dart';
+import '../services/impresion_service.dart';
+import 'supervisor_override_dialog.dart';
 
 /// Diálogo con el detalle de una factura y botones de imprimir / guardar PDF.
 class FacturaDetalleDialog extends StatelessWidget {
@@ -18,6 +21,119 @@ class FacturaDetalleDialog extends StatelessWidget {
     final mi = dt.minute.toString().padLeft(2, "0");
     final s = dt.second.toString().padLeft(2, "0");
     return '$d/$m/${dt.year} $h:$mi:$s';
+  }
+
+  /// La reversión solo es válida sobre ventas procesadas (Pagada/Completada).
+  bool get _esReversible =>
+      factura.estatus == 'Pagada' || factura.estatus == 'Completada';
+
+  /// Flujo de "Reversar Venta" (P0.4): confirmación obligatoria → POST →
+  /// manejo del déficit de caja (SALDO_INSUFICIENTE).
+  Future<void> _reversar(BuildContext context) async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 48),
+        title: const Text('¿Reversar esta venta?'),
+        content: const Text(
+          'Esta acción es irreversible. Se emitirá una Nota de Crédito fiscal, '
+          'se retornarán los artículos al inventario recalculando su costo, y se '
+          'registrará un egreso en la caja actual por el monto de la venta. '
+          '¿Desea continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sí, reversar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !context.mounted) return;
+
+    // Autorización en caliente: un CAJERO debe validar su PIN contra el
+    // backend (Supervisor/Admin) antes de poder reversar.
+    String? pinSupervisor;
+    if (!ApiService.esSupervisor) {
+      pinSupervisor = await showDialog<String>(
+        context: context,
+        builder: (_) => const SupervisorOverrideDialog(),
+      );
+      if (pinSupervisor == null || !context.mounted) return; // cancelado
+      final valida = await ApiService.validarPinSupervisor(pinSupervisor);
+      if (!context.mounted) return;
+      if (valida['valido'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('PIN de Supervisor inválido'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+    }
+
+    final resultado =
+        await ApiService.reversarVenta(factura.facturaId, pinSupervisor: pinSupervisor);
+    if (!context.mounted) return;
+
+    if (resultado['success'] == true) {
+      final nc = (resultado['notaCredito'] as Map?) ?? const {};
+      final ncCtrl = nc['Numero_Control'] ?? nc['numeroControl'] ?? '';
+      Navigator.of(context).pop(); // cierra el detalle
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ncCtrl.toString().isEmpty
+                ? 'Venta reversada: Nota de Crédito emitida'
+                : 'Venta reversada: Nota de Crédito $ncCtrl emitida',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Error de déficit o PIN inválido reportado por el backend.
+    if (resultado['tipo'] == 'SALDO_INSUFICIENTE') {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.liquor, color: Colors.orange, size: 48),
+          title: const Text('Saldo insuficiente en caja'),
+          content: Text(
+            '${resultado['error']}\n\n'
+            'Solicite un "Ingreso de Caja" al supervisor sobre el arqueo actual '
+            'antes de poder devolver el dinero de esta factura.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final esPin = resultado['tipo'] == 'SUPERVISOR_REQUERIDO' ||
+        resultado['tipo'] == 'PIN_INVALIDO';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          esPin ? 'PIN de Supervisor inválido' : (resultado['error']?.toString() ?? 'No se pudo reversar la venta'),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
   }
 
   @override
@@ -157,6 +273,29 @@ class FacturaDetalleDialog extends StatelessWidget {
                         label: const Text('Imprimir'),
                       ),
                       const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.receipt_long, size: 18),
+                        onPressed: () => ImpresionService.imprimirTicketFactura(
+                          f,
+                          esNotaCredito: f.estatus == 'Reversada',
+                        ),
+                        label: const Text('Imprimir Ticket'),
+                      ),
+                      if (_esReversible) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Theme.of(context).colorScheme.error,
+                            side: BorderSide(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                          icon: const Icon(Icons.undo, size: 18),
+                          onPressed: () => _reversar(context),
+                          label: const Text('Reversar Venta'),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cerrar'),
@@ -166,6 +305,19 @@ class FacturaDetalleDialog extends StatelessWidget {
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      if (_esReversible)
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Theme.of(context).colorScheme.error,
+                            side: BorderSide(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                          icon: const Icon(Icons.undo, size: 18),
+                          onPressed: () => _reversar(context),
+                          label: const Text('Reversar Venta'),
+                        ),
+                      const SizedBox(width: 8),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cerrar'),
@@ -185,6 +337,15 @@ class FacturaDetalleDialog extends StatelessWidget {
                         icon: const Icon(Icons.print, size: 18),
                         onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),
                         label: const Text('Imprimir'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.receipt_long, size: 18),
+                        onPressed: () => ImpresionService.imprimirTicketFactura(
+                          f,
+                          esNotaCredito: f.estatus == 'Reversada',
+                        ),
+                        label: const Text('Imprimir Ticket'),
                       ),
                     ],
                   ),

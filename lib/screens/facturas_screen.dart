@@ -66,10 +66,14 @@ class _FacturasScreenState extends State<FacturasScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final cs = Theme.of(context).colorScheme;
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al cargar facturas: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar facturas: $e'),
+            backgroundColor: cs.error,
+          ),
+        );
       }
     }
   }
@@ -128,7 +132,8 @@ class _FacturasScreenState extends State<FacturasScreen> {
     _cargar();
   }
 
-  Widget _buildBarraFiltros() {
+  Widget _buildBarraFiltros(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Wrap(
@@ -141,9 +146,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
             return ChoiceChip(
               label: Text(f.$2),
               selected: sel,
-              selectedColor: Colors.blue,
+              selectedColor: cs.primaryContainer,
               labelStyle: TextStyle(
-                color: sel ? Colors.white : Colors.grey[700],
+                color: sel ? cs.onPrimaryContainer : cs.onSurfaceVariant,
                 fontWeight: sel ? FontWeight.bold : FontWeight.normal,
               ),
               onSelected: (_) => _seleccionarFiltro(f.$1),
@@ -153,7 +158,7 @@ class _FacturasScreenState extends State<FacturasScreen> {
             avatar: Icon(
               Icons.date_range,
               size: 18,
-              color: _filtro == 'personalizado' ? Colors.white : Colors.grey,
+              color: _filtro == 'personalizado' ? cs.onPrimaryContainer : cs.outline,
             ),
             label: Text(
               _filtro == 'personalizado' && _rangoCustom != null
@@ -161,9 +166,11 @@ class _FacturasScreenState extends State<FacturasScreen> {
                   : 'Personalizado',
             ),
             selected: _filtro == 'personalizado',
-            selectedColor: Colors.blue,
+            selectedColor: cs.primaryContainer,
             labelStyle: TextStyle(
-              color: _filtro == 'personalizado' ? Colors.white : Colors.grey[700],
+              color: _filtro == 'personalizado'
+                  ? cs.onPrimaryContainer
+                  : cs.onSurfaceVariant,
               fontWeight: _filtro == 'personalizado'
                   ? FontWeight.bold
                   : FontWeight.normal,
@@ -177,99 +184,111 @@ class _FacturasScreenState extends State<FacturasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Registro de Facturas'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _cargar,
-            tooltip: 'Actualizar',
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          leading: IconButton(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Regresar',
+            onPressed: () => Navigator.maybePop(context),
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      labelText: 'Buscar por N° de control o cliente',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (v) => setState(() => _query = v),
-                  ),
-                ),
-                _buildBarraFiltros(),
-                Expanded(
-                  child: _filtradas.isEmpty
-                      ? const Center(child: Text('No hay facturas registradas'))
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          itemCount: _filtradas.length,
-                          separatorBuilder: (context, index) =>
-                              const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final f = _filtradas[index];
-                            return Card(
-                              elevation: 1,
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              child: ListTile(
-                                onTap: () => _verDetalle(f),
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.blue.withValues(
-                                    alpha: 0.12,
-                                  ),
-                                  child: const Icon(
-                                    Icons.receipt_long,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                                title: Text(
-                                  '${f.numeroControl ?? "FV-${f.facturaId}"} • ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  '${_fmtFecha(f.fechaEmision)} • \$${f.totalGeneral.toStringAsFixed(2)}',
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.visibility,
-                                        color: Colors.blue,
-                                      ),
-                                      tooltip: 'Ver detalle',
-                                      onPressed: () => _verDetalle(f),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.print,
-                                        color: Colors.green,
-                                      ),
-                                      tooltip: 'Imprimir',
-                                      onPressed: () =>
-                                          FacturaPdfService.imprimir(
-                                            f,
-                                            tasa: _tasa,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
+          title: const Text('Registro de Facturas'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _cargar,
+              tooltip: 'Actualizar',
             ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Buscar por N° de control o cliente',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => setState(() => _query = v),
+                    ),
+                  ),
+                  _buildBarraFiltros(context),
+                  Expanded(
+                    child: _filtradas.isEmpty
+                        ? const Center(child: Text('No hay facturas registradas'))
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            itemCount: _filtradas.length,
+                            separatorBuilder: (context, index) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final f = _filtradas[index];
+                              return Card(
+                                elevation: 1,
+                                margin: const EdgeInsets.symmetric(vertical: 4),
+                                child: ListTile(
+                                  onTap: () => _verDetalle(f),
+                                  leading: CircleAvatar(
+                                    backgroundColor: cs.primaryContainer,
+                                    child: Icon(
+                                      Icons.receipt_long,
+                                      color: cs.onPrimaryContainer,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    '${f.numeroControl ?? "FV-${f.facturaId}"} • ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    '${_fmtFecha(f.fechaEmision)} • \$${f.totalGeneral.toStringAsFixed(2)}',
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                                        icon: Icon(
+                                          Icons.visibility,
+                                          color: cs.primary,
+                                        ),
+                                        tooltip: 'Ver detalle',
+                                        onPressed: () => _verDetalle(f),
+                                      ),
+                                      IconButton(
+                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                                        icon: Icon(
+                                          Icons.print,
+                                          color: cs.secondary,
+                                        ),
+                                        tooltip: 'Imprimir',
+                                        onPressed: () =>
+                                            FacturaPdfService.imprimir(
+                                              f,
+                                              tasa: _tasa,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }

@@ -9,6 +9,9 @@ import 'facturas_screen.dart';
 import 'login_screen.dart';
 import 'finanzas_screen.dart';
 import '../services/api_service.dart';
+import '../services/preferences_service.dart';
+import '../services/shortcut_service.dart';
+import '../widgets/walkthrough_overlay.dart';
 
 import 'configuracion_screen.dart';
 
@@ -50,6 +53,7 @@ class _ModuloSistema {
 /// light/dark automática. Se resuelve en tiempo de build().
 List<_ModuloSistema> _modulosSistema(BuildContext context) {
   final scheme = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   return [
     _ModuloSistema(1, 'Ventas / POS', 'OPERACIÓN', Icons.point_of_sale,
         scheme.primary, PosScreen()),
@@ -58,19 +62,19 @@ List<_ModuloSistema> _modulosSistema(BuildContext context) {
     _ModuloSistema(3, 'Clientes', 'OPERACIÓN', Icons.people,
         scheme.tertiary, ClientesScreen()),
     _ModuloSistema(4, 'Productos', 'OPERACIÓN', Icons.inventory_2,
-        const Color(0xFFF59E0B), InventarioScreen()), // Amber (neutro dark/light)
+        isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706), InventarioScreen()), // Amber
     _ModuloSistema(5, 'Entradas', 'OPERACIÓN',
-        Icons.add_shopping_cart, const Color(0xFF8B5CF6), EntradasScreen()), // Violet
+        Icons.add_shopping_cart, isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED), EntradasScreen()), // Violet
     _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
-        const Color(0xFF4F46E5), ProveedoresScreen()), // Indigo
+        isDark ? const Color(0xFF818CF8) : const Color(0xFF4338CA), ProveedoresScreen()), // Indigo
     // Módulo 7: las métricas profundas viven en el propio Dashboard —
     // _abrirModulo hace scroll a esa sección (ver _irAMetricas).
     _ModuloSistema(7, 'Métricas Profundas', 'ADMINISTRACIÓN', Icons.insights,
-        const Color(0xFFEA580C), null), // Deep Orange
+        isDark ? const Color(0xFFFB923C) : const Color(0xFFEA580C), null), // Deep Orange
     _ModuloSistema(8, 'Finanzas & Caja', 'ADMINISTRACIÓN',
-        Icons.account_balance_wallet, const Color(0xFF7C3AED), FinanzasScreen()), // Purple
+        Icons.account_balance_wallet, isDark ? const Color(0xFFC084FC) : const Color(0xFF6D28D9), FinanzasScreen()), // Purple
     _ModuloSistema(9, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
-        const Color(0xFF64748B), ConfiguracionScreen()), // Slate
+        isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569), ConfiguracionScreen()), // Slate
   ];
 }
 
@@ -210,9 +214,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    ShortcutService.setModule('dashboard');
     _cargarMetricas();
     _cargarSerie();
     _cargarTasa();
+    // Onboarding de primer uso: tras el login, si el cajero aún no lo completó,
+    // se muestra el tutorial guiado de 5 pasos (solo en la primera ejecución).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _evaluarWalkthroughInicial();
+    });
+  }
+
+  /// Muestra el walkthrough de primer uso si `has_completed_onboarding`
+  /// es falso. Al finalizar/omitir se persiste el estado para no repetirlo.
+  Future<void> _evaluarWalkthroughInicial() async {
+    final hecho = await PreferencesService.getOnboardingDone();
+    if (!mounted || hecho) return;
+    WalkthroughOverlay.mostrar(
+      context,
+      pasos: walkthroughCajero(),
+      onCompletado: () => PreferencesService.setOnboardingDone(true),
+      onOmitido: () => PreferencesService.setOnboardingDone(true),
+    );
   }
 
   Future<void> _cargarTasa() async {
@@ -1175,7 +1198,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           'Stock: ${p['Stock_Actual']} (Mín: ${p['Stock_Minimo']})',
                           style: const TextStyle(fontSize: 11),
                         ),
-                        onTap: () => _navegar(const EntradasScreen()),
+                        // Banner accionable → Entradas con precarga de los
+                        // productos con quiebre (producto tocado preseleccionado).
+                        onTap: () {
+                          final ids = alertas
+                              .map<int>((a) =>
+                                  (a['Producto_ID'] as num?)?.toInt() ?? 0)
+                              .where((id) => id != 0)
+                              .toList();
+                          _navegar(EntradasScreen(
+                            productoInicialId:
+                                (p['Producto_ID'] as num?)?.toInt(),
+                            idsBajoStock: ids,
+                          ));
+                        },
                       ),
                     )
                     .toList(),

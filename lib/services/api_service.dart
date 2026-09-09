@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
@@ -17,37 +18,67 @@ class ApiService {
   // PRODUCCIÓN (por defecto): backend desplegado en Railway.
   //   URL pública: https://ferreteria-adrialga-backend-production.up.railway.app
   //
-  // DESARROLLO LOCAL: para apuntar al backend local (http://localhost:3000),
-  // compila/ejecuta con el flag de entorno USE_LOCAL_API=true:
+  // DESARROLLO LOCAL: compila/ejecuta con el flag de entorno USE_LOCAL_API=true:
   //   flutter run -d chrome --dart-define=USE_LOCAL_API=true
   //
-  // También se puede sobrescribir la URL completa de forma manual:
+  // SOBRESCRITURA explícita (prioridad máxima): define la URL completa vía
+  // --dart-define, útil para apuntar a un backend de staging o pruebas:
   //   flutter run --dart-define=API_BASE_URL=https://mi-api.com/api
+  //
+  // Prioridad de resolución (jerarquía):
+  //   1. API_BASE_URL  → URL explícita (staging/QA/producción custom).
+  //   2. USE_LOCAL_API → backend local (emulador o host).
+  //   3. Valor por defecto → Railway de producción.
   static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
   static const bool _usarLocal = bool.fromEnvironment('USE_LOCAL_API');
 
-  static const String _urlProduccion = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://ferreteria-adrialga-backend-production.up.railway.app/api',
-  );
+  static const String _urlProduccion =
+      'https://ferreteria-adrialga-backend-production.up.railway.app/api';
   static const String _urlLocalWeb = 'http://localhost:3000/api';
 
   // Determinación dinámica de la URL base según la plataforma
   static String get baseUrl {
-    if (_baseUrlOverride.isNotEmpty && _usarLocal) return _baseUrlOverride;
-    if (_usarLocal) {
-      // Desarrollo local
-      if (kIsWeb) return _urlLocalWeb;
-      if (!kIsWeb && Platform.isAndroid) return 'http://10.0.2.2:3000/api'; // Emulador Android
-      return _urlLocalWeb; // Windows / macOS / iOS Simulator
+    String url;
+    if (_baseUrlOverride.isNotEmpty) {
+      // 1) Override explícito: gana sobre cualquier otro modo.
+      url = _baseUrlOverride;
+    } else if (_usarLocal) {
+      // 2) Desarrollo local (solo como fallback cuando no hay override).
+      if (kIsWeb) {
+        url = _urlLocalWeb;
+      } else if (!kIsWeb && Platform.isAndroid) {
+        url = 'http://10.0.2.2:3000/api'; // Emulador Android
+      } else {
+        url = _urlLocalWeb; // Windows / macOS / iOS Simulator
+      }
+    } else {
+      // 3) Producción (por defecto).
+      url = _urlProduccion;
     }
-    // Producción (por defecto en compilación web para Vercel)
-    return _urlProduccion;
+    if (!url.endsWith('/api')) {
+      if (url.endsWith('/')) {
+        url = '${url}api';
+      } else {
+        url = '$url/api';
+      }
+    }
+    return url;
   }
 
   // Token JWT en memoria, persistido en SharedPreferences para reutilizarlo
   // entre sesiones y adjuntarlo como autorización en cada petición protegida.
   static String? _token;
+
+  // Rol del usuario activo (CAJERO | SUPERVISOR | ADMIN). Se usa para decidir
+  // si una acción crítica exige la autorización en caliente por PIN.
+  static String? usuarioRol;
+
+  /// True si el usuario activo puede autorizar acciones críticas por sí mismo
+  /// (SUPERVISOR/ADMIN). Si se desconoce el rol, se asume que NO puede.
+  static bool get esSupervisor {
+    final r = usuarioRol?.toUpperCase();
+    return r == 'SUPERVISOR' || r == 'ADMIN';
+  }
 
   // Headers para peticiones autenticadas (incluyen el token si existe)
   static Map<String, String> get _headers => {
@@ -65,6 +96,7 @@ class ApiService {
     try {
       final prefs = await SharedPreferences.getInstance();
       _token = prefs.getString('auth_token');
+      usuarioRol = prefs.getString('auth_rol');
     } catch (_) {
       _token = null;
     }
@@ -75,9 +107,11 @@ class ApiService {
   /// Limpia la sesión local (útil al cerrar sesión).
   static Future<void> logout() async {
     _token = null;
+    usuarioRol = null;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('auth_token');
+      await prefs.remove('auth_rol');
     } catch (_) {}
   }
 
@@ -86,6 +120,16 @@ class ApiService {
     if (token != null && token.isNotEmpty) {
       SharedPreferences.getInstance().then((prefs) {
         prefs.setString('auth_token', token);
+      });
+    }
+  }
+
+  /// Persiste el rol del usuario activo para las autorizaciones (override).
+  static void _saveRol(String? rol) {
+    usuarioRol = rol;
+    if (rol != null && rol.isNotEmpty) {
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('auth_rol', rol);
       });
     }
   }
@@ -470,6 +514,10 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _saveToken(data['token']?.toString());
+        final usu = data['usuario'];
+        if (usu is Map) {
+          _saveRol((usu['rol'] ?? usu['Rol'])?.toString());
+        }
         return true;
       }
       return false;
@@ -577,6 +625,98 @@ class ApiService {
     return filename;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPORTES FISCALES SENIAT (Fase 8/9) — Libro de Ventas, Compras y Resumen IVA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Construye los query params de período (anio/mes), por defecto el mes en curso.
+  static Map<String, String> _periodoQuery(int? anio, int? mes) {
+    final now = DateTime.now();
+    return {
+      'anio': (anio ?? now.year).toString(),
+      'mes': (mes ?? now.month).toString(),
+    };
+  }
+
+  /// Descarga el Libro de Ventas del período en CSV (BOM UTF-8, RFC-4180).
+  /// En Web dispara la descarga; en Mobile/Desktop guarda y devuelve el nombre
+  /// del archivo. Autenticado (Bearer).
+  static Future<String?> exportarLibroVentasCsv({int? anio, int? mes}) async {
+    final params = _periodoQuery(anio, mes);
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/seniat/libro-ventas')
+              .replace(queryParameters: {...params, 'formato': 'csv'}),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(_mensajeError(response.body));
+    }
+    final filename = 'libro_ventas_${params['anio']}-${params['mes']}.csv';
+    await DownloadService.downloadFile(
+      bytes: response.bodyBytes,
+      filename: filename,
+      mimeType: 'text/csv;charset=utf-8',
+    );
+    return filename;
+  }
+
+  /// Descarga el Libro de Compras del período en CSV (BOM UTF-8, RFC-4180).
+  static Future<String?> exportarLibroComprasCsv({int? anio, int? mes}) async {
+    final params = _periodoQuery(anio, mes);
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/seniat/libro-compras')
+              .replace(queryParameters: {...params, 'formato': 'csv'}),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(_mensajeError(response.body));
+    }
+    final filename = 'libro_compras_${params['anio']}-${params['mes']}.csv';
+    await DownloadService.downloadFile(
+      bytes: response.bodyBytes,
+      filename: filename,
+      mimeType: 'text/csv;charset=utf-8',
+    );
+    return filename;
+  }
+
+  /// Obtiene el Resumen de IVA (débito − crédito) del período como JSON.
+  /// shape: { anio, mes, ventas:{documentos,...}, compras:{...}, ivaAPagarUsd }.
+  static Future<Map<String, dynamic>> obtenerResumenIVA({
+    int? anio,
+    int? mes,
+  }) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/seniat/resumen-iva')
+              .replace(queryParameters: _periodoQuery(anio, mes)),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(_mensajeError(response.body));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Descarga el Resumen de IVA como archivo JSON para auditoría local.
+  static Future<String?> exportarResumenIvaJson({int? anio, int? mes}) async {
+    final data = await obtenerResumenIVA(anio: anio, mes: mes);
+    final params = _periodoQuery(anio, mes);
+    final filename = 'resumen_iva_${params['anio']}-${params['mes']}.json';
+    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(data)));
+    await DownloadService.downloadFile(
+      bytes: bytes,
+      filename: filename,
+      mimeType: 'application/json;charset=utf-8',
+    );
+    return filename;
+  }
+
   // --- FACTURACIÓN (POS) ---
   static Future<Map<String, dynamic>> createFactura(
     Map<String, dynamic> facturaData,
@@ -590,11 +730,87 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 12));
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return {'success': true};
+        final decod = _decodificarError(response.body);
+        return {
+          'success': true,
+          'factura': decod['factura'],
+          ...decod,
+        };
       }
-      return {'success': false, 'error': response.body};
+      return {'success': false, 'error': _mensajeError(response.body)};
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': 'No se pudo conectar con el servidor: $e'};
+    }
+  }
+
+  /// Si el cuerpo es JSON con 'tipo' (p. ej. SALDO_INSUFICIENTE), lo expone
+  /// para que la UI decida el flujo; devuelve map vacío si no es JSON.
+  static Map<String, dynamic> _decodificarError(String body) {
+    try {
+      final m = jsonDecode(body);
+      if (m is Map<String, dynamic>) return m;
+    } catch (_) {}
+    return const {};
+  }
+
+  /// Reversa una venta (P0.4): emite Nota de Crédito fiscal, retorna el stock
+  /// recalculando el CMP y asienta el egreso en caja. Todo en una transacción
+  /// ACID del backend. [pinSupervisor] es obligatorio si el usuario activo es
+  /// CAJERO (autorización en caliente). Retorna { success, error?, tipo? }.
+  static Future<Map<String, dynamic>> reversarVenta(
+    int facturaId, {
+    String? pinSupervisor,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/facturas/$facturaId/reversar'),
+            headers: _headers,
+            body: jsonEncode({'pinSupervisor': pinSupervisor}),
+          )
+          .timeout(const Duration(seconds: 15));
+      final decod = _decodificarError(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {
+          'success': true,
+          ...decod,
+          'notaCredito': decod['notaCredito'],
+        };
+      }
+      return {
+        'success': false,
+        'error': (decod['error'] as String?) ??
+            'No se pudo reversar la venta',
+        'tipo': (decod['tipo'] as String?) ?? '',
+        'codigo': decod,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'No se pudo conectar con el servidor: $e',
+        'tipo': '',
+      };
+    }
+  }
+
+  /// Valida en caliente el PIN de un Supervisor/Admin. Retorna `{valido, ...}`
+  /// para autorizar una acción crítica (reversión, ajuste de inventario).
+  static Future<Map<String, dynamic>> validarPinSupervisor(String pin) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/validar-pin-supervisor'),
+            headers: _headers,
+            body: jsonEncode({'pin': pin}),
+          )
+          .timeout(const Duration(seconds: 10));
+      final decod = _decodificarError(response.body);
+      if (response.statusCode == 200) {
+        return {'valido': true, ...decod};
+      }
+      return {'valido': false, 'error': decod['error'] ?? 'PIN de Supervisor inválido'};
+    } catch (e) {
+      return {'valido': false, 'error': 'No se pudo verificar el PIN: $e'};
     }
   }
 

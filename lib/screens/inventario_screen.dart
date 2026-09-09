@@ -39,8 +39,12 @@ class _InventarioScreenState extends State<InventarioScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
+        final cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar inventario: $e')),
+          SnackBar(
+            content: Text('Error al cargar inventario: $e'),
+            backgroundColor: cs.error,
+          ),
         );
       }
     }
@@ -94,6 +98,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
           );
         }
       } else if (mounted) {
+        final cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -101,7 +106,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                   ? 'Error al crear el producto'
                   : 'Error al actualizar el producto',
             ),
-            backgroundColor: Colors.redAccent,
+            backgroundColor: cs.error,
           ),
         );
       }
@@ -109,6 +114,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
   }
 
   Future<void> _eliminarProducto(ProductoModel producto) async {
+    final cs = Theme.of(context).colorScheme;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -120,12 +126,12 @@ class _InventarioScreenState extends State<InventarioScreen> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Eliminar',
-              style: TextStyle(color: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: cs.error,
+              foregroundColor: cs.onError,
             ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
           ),
         ],
       ),
@@ -142,9 +148,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
         }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al eliminar el producto'),
-            backgroundColor: Colors.redAccent,
+          SnackBar(
+            content: const Text('Error al eliminar el producto'),
+            backgroundColor: cs.error,
           ),
         );
       }
@@ -191,7 +197,8 @@ class _InventarioScreenState extends State<InventarioScreen> {
     );
   }
 
-  Widget _buildVistaProductos() {
+  Widget _buildVistaProductos(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         TextField(
@@ -228,11 +235,13 @@ class _InventarioScreenState extends State<InventarioScreen> {
                       ),
                       leading: CircleAvatar(
                         backgroundColor: bajoStock
-                            ? Colors.red.shade100
-                            : Colors.blue.shade100,
+                            ? cs.errorContainer
+                            : cs.primaryContainer,
                         child: Icon(
                           bajoStock ? Icons.warning : Icons.inventory_2,
-                          color: bajoStock ? Colors.red : Colors.blue,
+                          color: bajoStock
+                              ? cs.onErrorContainer
+                              : cs.onPrimaryContainer,
                         ),
                       ),
                       trailing: Row(
@@ -240,18 +249,22 @@ class _InventarioScreenState extends State<InventarioScreen> {
                         children: [
                           Text(
                             '\$${prod.precioVenta.toStringAsFixed(2)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                              color: cs.primary,
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                            icon: Icon(Icons.edit, color: cs.primary),
+                            tooltip: 'Editar producto',
                             onPressed: () => _abrirDialogoProducto(prod),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
+                            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                            icon: Icon(Icons.delete, color: cs.error),
+                            tooltip: 'Eliminar producto',
                             onPressed: () => _eliminarProducto(prod),
                           ),
                         ],
@@ -264,32 +277,49 @@ class _InventarioScreenState extends State<InventarioScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gestión de Inventario'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.category),
-            onPressed: _abrirGestionCategorias,
-            tooltip: 'Gestionar categorías',
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          leading: IconButton(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Regresar',
+            onPressed: () => Navigator.maybePop(context),
           ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _cargarDatos),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _abrirDialogoProducto,
-        icon: const Icon(Icons.add),
-        label: const Text('Nuevo Producto'),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: _buildVistaProductos(),
+          title: const Text('Gestión de Inventario'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.category),
+              onPressed: _abrirGestionCategorias,
+              tooltip: 'Gestionar categorías',
             ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _cargarDatos,
+              tooltip: 'Actualizar',
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          onPressed: _abrirDialogoProducto,
+          icon: const Icon(Icons.add),
+          label: const Text('Nuevo Producto'),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: _buildVistaProductos(context),
+              ),
+      ),
     );
   }
 }

@@ -84,9 +84,12 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+            child: const Text('Eliminar'),
           ),
         ],
       ),
@@ -153,12 +156,21 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Gestión de Categorías')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _crearCategoria,
-        child: const Icon(Icons.add),
-      ),
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          title: const Text('Gestión de Categorías'),
+        ),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          onPressed: _crearCategoria,
+          child: const Icon(Icons.add),
+        ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
@@ -173,11 +185,11 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        icon: Icon(Icons.edit, color: cs.primary),
                         onPressed: () => _editarCategoria(cat),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
+                        icon: Icon(Icons.delete, color: cs.error),
                         onPressed: () => _eliminarCategoria(cat),
                       ),
                     ],
@@ -185,6 +197,7 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
                 );
               },
             ),
+      ),
     );
   }
 }

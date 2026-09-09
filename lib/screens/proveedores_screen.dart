@@ -23,13 +23,19 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
     setState(() => _isLoading = true);
     try {
       final res = await ApiService.getProveedores();
-      setState(() {
-        _proveedores = res;
-      });
+      if (mounted) {
+        setState(() {
+          _proveedores = res;
+        });
+      }
     } catch (e) {
       if (mounted) {
+        final cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar proveedores: $e')),
+          SnackBar(
+            content: Text('Error al cargar proveedores: $e'),
+            backgroundColor: cs.error,
+          ),
         );
       }
     } finally {
@@ -72,7 +78,7 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
                 TextField(
                   controller: emailCtrl,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Correo'),
+                  decoration: const InputDecoration(labelText: 'Correo Electrónico'),
                 ),
                 TextField(
                   controller: direccionCtrl,
@@ -118,10 +124,20 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
       if (mounted) {
         if (res['success'] == true) {
           _cargarProveedores();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Proveedor creado exitosamente')),
+          );
         } else {
+final cs = Theme.of(context).colorScheme;
+          final detalle = res['error']?.toString().trim() ?? '';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error al crear proveedor: ${res['error']}'),
+              content: Text(
+                detalle.isEmpty
+                    ? 'Error al crear proveedor'
+                    : 'Error al crear proveedor: $detalle',
+              ),
+              backgroundColor: cs.error,
             ),
           );
         }
@@ -131,48 +147,68 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Proveedores'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _cargarProveedores,
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          leading: IconButton(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Regresar',
+            onPressed: () => Navigator.maybePop(context),
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _crearProveedor,
-        backgroundColor: Colors.indigo,
-        child: const Icon(Icons.add),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _proveedores.isEmpty
-          ? const Center(child: Text('No hay proveedores registrados.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _proveedores.length,
-              itemBuilder: (context, index) {
-                final prov = _proveedores[index];
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.local_shipping,
-                      color: Colors.indigo,
-                    ),
-                    title: Text(
-                      prov['Razon_Social'] ?? 'Sin Nombre',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      'RIF: ${prov['RIF_Cedula'] ?? "N/A"} | Tel: '
-                      '${prov['Telefono'] ?? "N/A"}',
-                    ),
-                  ),
-                );
-              },
+          title: const Text('Proveedores'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _cargarProveedores,
+              tooltip: 'Actualizar',
             ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _crearProveedor,
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          tooltip: 'Nuevo Proveedor',
+          child: const Icon(Icons.add),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _proveedores.isEmpty
+                ? const Center(child: Text('No hay proveedores registrados.'))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _proveedores.length,
+                    itemBuilder: (context, index) {
+                      final prov = _proveedores[index] as Map<String, dynamic>;
+                      final rif = prov['RIF_Cedula']?.toString() ?? 'S/R';
+                      final razon = prov['Razon_Social']?.toString() ?? 'Sin Nombre';
+                      final telefono = prov['Telefono']?.toString() ?? 'N/A';
+                      return Card(
+                        elevation: 1,
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: cs.primaryContainer,
+                            child: Icon(
+                              Icons.local_shipping,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                          title: Text(
+                            razon,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text('RIF: $rif | Tel: $telefono'),
+                        ),
+                      );
+                    },
+                  ),
+      ),
     );
   }
 }

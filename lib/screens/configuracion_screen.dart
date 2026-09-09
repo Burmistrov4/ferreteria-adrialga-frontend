@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../providers/theme_notifier.dart';
 import '../services/api_service.dart';
+import '../services/preferences_service.dart';
+import '../widgets/walkthrough_overlay.dart';
 import 'categorias_screen.dart';
 
 /// Módulo 8: Configuración (Tasa BCV, Sistema y catálogo maestro).
@@ -33,6 +35,18 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       _tasaEsBCV = ApiService.lastTasaEsBCV;
       _cargando = false;
     });
+  }
+
+  Future<void> _reiniciarTutorial() async {
+    // Se fuerza has_completed_onboarding = false y se abre el tutorial de inmediato.
+    await PreferencesService.setOnboardingDone(false);
+    if (!mounted) return;
+    WalkthroughOverlay.mostrar(
+      context,
+      pasos: walkthroughCajero(),
+      onCompletado: () => PreferencesService.setOnboardingDone(true),
+      onOmitido: () => PreferencesService.setOnboardingDone(true),
+    );
   }
 
   Widget _filaInfo(String etiqueta, String valor) {
@@ -218,6 +232,24 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const CategoriasScreen()),
               ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Tutorial de primer uso (onboarding) ────────────────────────
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.help_outline, color: Colors.teal),
+              title: const Text('Tutorial de Cajero'),
+              subtitle: const Text(
+                'Repite el recorrido guiado de primer uso (Caja → POS → Cobro → Arqueo).',
+              ),
+              trailing: const Icon(Icons.play_circle_outline),
+              onTap: _reiniciarTutorial,
             ),
           ),
           const SizedBox(height: 12),
