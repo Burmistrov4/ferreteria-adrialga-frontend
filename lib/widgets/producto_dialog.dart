@@ -136,9 +136,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
         );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al crear la categoría'),
-            backgroundColor: Colors.redAccent,
+          SnackBar(
+            content: const Text('Error al crear la categoría'),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }

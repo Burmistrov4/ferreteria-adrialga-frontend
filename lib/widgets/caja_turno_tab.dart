@@ -63,7 +63,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(texto),
-        backgroundColor: error ? Colors.red.shade700 : null,
+        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
       ),
     );
   }
@@ -186,7 +186,10 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
               Navigator.pop(ctx);
               _cerrar();
             },
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             child: const Text('Cerrar'),
           ),
         ],
@@ -196,7 +199,6 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
     if (_cargando) return const Center(child: CircularProgressIndicator());
     if (_data == null) {
@@ -213,7 +215,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
         padding: const EdgeInsets.all(16),
         children: [
           Card(
-            color: isDark ? cs.surfaceContainerHighest : cs.surface,
+            color: cs.surfaceContainerLow,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -222,12 +224,19 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                 children: [
                   Row(
                     children: [
-                      Icon(cajaActiva ? Icons.lock_open : Icons.lock_outline, color: cajaActiva ? Colors.green : Colors.redAccent),
+                      Icon(
+                        cajaActiva ? Icons.lock_open : Icons.lock_outline,
+                        color: cajaActiva ? cs.tertiary : cs.error,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           cajaActiva ? 'Caja ABIERTA' : 'Caja CERRADA',
-                          style: TextStyle(color: cajaActiva ? Colors.green : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                            color: cajaActiva ? cs.tertiary : cs.error,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                       IconButton(icon: const Icon(Icons.refresh), onPressed: _trabajando ? null : _cargar, tooltip: 'Recargar'),
@@ -240,19 +249,19 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Saldo Disponible', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontSize: 14)),
+                          Text('Saldo Disponible', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
                           const SizedBox(height: 4),
-                          Text('\$${_saldo.toStringAsFixed(2)}', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 28, fontWeight: FontWeight.bold)),
+                          Text('\$${_saldo.toStringAsFixed(2)}', style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('Ingresos', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                          Text('+\$${_numD(resumen['ingresosUSDTurno']).toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.tertiary, fontWeight: FontWeight.bold)),
+                          Text('Ingresos', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                          Text('+\$${_numD(resumen['ingresosUSDTurno']).toStringAsFixed(2)}', style: TextStyle(color: cs.tertiary, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Text('Egresos', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                          Text('-\$${_numD(resumen['egresosUSDTurno']).toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.bold)),
+                          Text('Egresos', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                          Text('-\$${_numD(resumen['egresosUSDTurno']).toStringAsFixed(2)}', style: TextStyle(color: cs.error, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -263,7 +272,10 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                       onPressed: _trabajando ? null : () => _mostrarDialogoCerrar(),
                       icon: _trabajando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.lock),
                       label: const Text('Cerrar caja (arqueo)'),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: cs.error,
+                        side: BorderSide(color: cs.error),
+                      ),
                     )
                   else
                     FilledButton.icon(
@@ -276,37 +288,37 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
             ),
           ),
           const SizedBox(height: 16),
-          Text('Movimientos Recientes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
+          Text('Movimientos Recientes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurface)),
           const SizedBox(height: 8),
           if (movimientos.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('Sin movimientos', style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey.shade600))),
+              child: Center(child: Text('Sin movimientos', style: TextStyle(color: cs.onSurfaceVariant))),
             )
           else
             ...movimientos.map<Widget>((m) {
               final esIngreso = m['Tipo'] == 'INGRESO';
               return Card(
-                color: isDark ? Theme.of(context).colorScheme.surfaceContainerHighest : Colors.white,
+                color: cs.surfaceContainerLow,
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: esIngreso ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
-                    child: Icon(esIngreso ? Icons.arrow_downward : Icons.arrow_upward, color: esIngreso ? Colors.green : Colors.red),
+                    backgroundColor: esIngreso ? cs.tertiary.withValues(alpha: 0.2) : cs.error.withValues(alpha: 0.2),
+                    child: Icon(esIngreso ? Icons.arrow_downward : Icons.arrow_upward, color: esIngreso ? cs.tertiary : cs.error),
                   ),
-                  title: Text(m['Concepto'] ?? '', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                  subtitle: Text('${m['Metodo_Pago'] ?? ''} - ${m['Fecha'] ?? ''}', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                  trailing: Text('${esIngreso ? '+' : '-'}\$${_numD(m['Monto_USD']).toStringAsFixed(2)}', style: TextStyle(color: esIngreso ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                  title: Text(m['Concepto'] ?? '', style: TextStyle(color: cs.onSurface)),
+                  subtitle: Text('${m['Metodo_Pago'] ?? ''} - ${m['Fecha'] ?? ''}', style: TextStyle(color: cs.onSurfaceVariant)),
+                  trailing: Text('${esIngreso ? '+' : '-'}\$${_numD(m['Monto_USD']).toStringAsFixed(2)}', style: TextStyle(color: esIngreso ? cs.tertiary : cs.error, fontWeight: FontWeight.bold)),
                 ),
               );
             }),
           const SizedBox(height: 16),
-          Text('Arqueos del Mes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
+          Text('Arqueos del Mes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurface)),
           const SizedBox(height: 8),
           if (_arqueos.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: Text('Sin turnos registrados este mes', style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey))),
+              child: Center(child: Text('Sin turnos registrados este mes', style: TextStyle(color: cs.onSurfaceVariant))),
             )
           else
             ..._arqueos.map<Widget>((a) {
@@ -315,7 +327,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
               final esAbierto = a['estado'] == 'ABIERTA';
               // Verde = cuadra; rojo = faltante (entregó de menos); ámbar = sobrante.
               final Color indicador = cuadrado
-                  ? Colors.green
+                  ? cs.tertiary
                   : (diferencia > 0 ? cs.error : cs.tertiary);
               return Card(
                 color: cs.surfaceContainerLow,

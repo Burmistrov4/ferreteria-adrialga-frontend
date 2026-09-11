@@ -200,8 +200,8 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: estatus == 'Pendiente' ? Colors.orange.withValues(alpha: 0.2) : Colors.green.withValues(alpha: 0.2),
-                child: Icon(estatus == 'Pendiente' ? Icons.pending : Icons.check, color: estatus == 'Pendiente' ? Colors.orange : Colors.green),
+                backgroundColor: estatus == 'Pendiente' ? cs.secondary.withValues(alpha: 0.2) : cs.tertiary.withValues(alpha: 0.2),
+                child: Icon(estatus == 'Pendiente' ? Icons.pending : Icons.check, color: estatus == 'Pendiente' ? cs.secondary : cs.tertiary),
               ),
               title: Text('CxP #${cxp['CxP_ID']?.toString() ?? ''} - ${prov?['Razon_Social'] ?? 'Proveedor'}', style: TextStyle(color: cs.onSurface)),
               subtitle: Text('Total: \$${total.toStringAsFixed(2)} - Estatus: $estatus', style: TextStyle(color: cs.onSurfaceVariant)),

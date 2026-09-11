@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../models/factura_model.dart';
 import '../services/api_service.dart';
@@ -6,7 +6,7 @@ import '../services/factura_pdf_service.dart';
 import '../services/impresion_service.dart';
 import 'supervisor_override_dialog.dart';
 
-/// Diálogo con el detalle de una factura y botones de imprimir / guardar PDF.
+/// DiÃ¡logo con el detalle de una factura y botones de imprimir / guardar PDF.
 class FacturaDetalleDialog extends StatelessWidget {
   final FacturaModel factura;
   final double tasa;
@@ -23,23 +23,24 @@ class FacturaDetalleDialog extends StatelessWidget {
     return '$d/$m/${dt.year} $h:$mi:$s';
   }
 
-  /// La reversión solo es válida sobre ventas procesadas (Pagada/Completada).
+  /// La reversiÃ³n solo es vÃ¡lida sobre ventas procesadas (Pagada/Completada).
   bool get _esReversible =>
       factura.estatus == 'Pagada' || factura.estatus == 'Completada';
 
-  /// Flujo de "Reversar Venta" (P0.4): confirmación obligatoria → POST →
-  /// manejo del déficit de caja (SALDO_INSUFICIENTE).
+  /// Flujo de "Reversar Venta" (P0.4): confirmaciÃ³n obligatoria â†’ POST â†’
+  /// manejo del dÃ©ficit de caja (SALDO_INSUFICIENTE).
   Future<void> _reversar(BuildContext context) async {
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 48),
-        title: const Text('¿Reversar esta venta?'),
+        icon: Icon(Icons.warning_amber_rounded,
+            color: Theme.of(ctx).colorScheme.error, size: 48),
+        title: const Text('Â¿Reversar esta venta?'),
         content: const Text(
-          'Esta acción es irreversible. Se emitirá una Nota de Crédito fiscal, '
-          'se retornarán los artículos al inventario recalculando su costo, y se '
-          'registrará un egreso en la caja actual por el monto de la venta. '
-          '¿Desea continuar?',
+          'Esta acciÃ³n es irreversible. Se emitirÃ¡ una Nota de CrÃ©dito fiscal, '
+          'se retornarÃ¡n los artÃ­culos al inventario recalculando su costo, y se '
+          'registrarÃ¡ un egreso en la caja actual por el monto de la venta. '
+          'Â¿Desea continuar?',
         ),
         actions: [
           TextButton(
@@ -52,14 +53,14 @@ class FacturaDetalleDialog extends StatelessWidget {
               foregroundColor: Theme.of(ctx).colorScheme.onError,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sí, reversar'),
+            child: const Text('SÃ­, reversar'),
           ),
         ],
       ),
     );
     if (confirmado != true || !context.mounted) return;
 
-    // Autorización en caliente: un CAJERO debe validar su PIN contra el
+    // AutorizaciÃ³n en caliente: un CAJERO debe validar su PIN contra el
     // backend (Supervisor/Admin) antes de poder reversar.
     String? pinSupervisor;
     if (!ApiService.esSupervisor) {
@@ -72,9 +73,9 @@ class FacturaDetalleDialog extends StatelessWidget {
       if (!context.mounted) return;
       if (valida['valido'] != true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PIN de Supervisor inválido'),
-            backgroundColor: Colors.redAccent,
+          SnackBar(
+            content: const Text('PIN de Supervisor invÃ¡lido'),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
         return;
@@ -93,20 +94,21 @@ class FacturaDetalleDialog extends StatelessWidget {
         SnackBar(
           content: Text(
             ncCtrl.toString().isEmpty
-                ? 'Venta reversada: Nota de Crédito emitida'
-                : 'Venta reversada: Nota de Crédito $ncCtrl emitida',
+                ? 'Venta reversada: Nota de CrÃ©dito emitida'
+                : 'Venta reversada: Nota de CrÃ©dito $ncCtrl emitida',
           ),
         ),
       );
       return;
     }
 
-    // Error de déficit o PIN inválido reportado por el backend.
+    // Error de dÃ©ficit o PIN invÃ¡lido reportado por el backend.
     if (resultado['tipo'] == 'SALDO_INSUFICIENTE') {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          icon: const Icon(Icons.liquor, color: Colors.orange, size: 48),
+          icon: Icon(Icons.liquor,
+              color: Theme.of(ctx).colorScheme.tertiary, size: 48),
           title: const Text('Saldo insuficiente en caja'),
           content: Text(
             '${resultado['error']}\n\n'
@@ -129,7 +131,7 @@ class FacturaDetalleDialog extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          esPin ? 'PIN de Supervisor inválido' : (resultado['error']?.toString() ?? 'No se pudo reversar la venta'),
+          esPin ? 'PIN de Supervisor invÃ¡lido' : (resultado['error']?.toString() ?? 'No se pudo reversar la venta'),
         ),
         backgroundColor: Theme.of(context).colorScheme.error,
       ),
@@ -171,7 +173,7 @@ class FacturaDetalleDialog extends StatelessWidget {
                   f.numeroControl ?? 'FV-${f.facturaId}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: esMovil ? 12 : 14,
                   ),
                 ),
@@ -183,11 +185,11 @@ class FacturaDetalleDialog extends StatelessWidget {
               style: TextStyle(fontSize: esMovil ? 11 : 13),
             ),
             Text(
-              'RIF/Cédula: ${f.clienteRif!.isNotEmpty ? f.clienteRif : "V-00000000"}',
+              'RIF/CÃ©dula: ${f.clienteRif!.isNotEmpty ? f.clienteRif : "V-00000000"}',
               style: TextStyle(fontSize: esMovil ? 11 : 13),
             ),
             Text(
-              'Fecha: ${_fmtFecha(f.fechaEmision)} • Atendido por: ${f.usuarioNombre!.isNotEmpty ? f.usuarioNombre : "Administrador"}',
+              'Fecha: ${_fmtFecha(f.fechaEmision)} â€¢ Atendido por: ${f.usuarioNombre!.isNotEmpty ? f.usuarioNombre : "Administrador"}',
               style: TextStyle(fontSize: esMovil ? 11 : 13),
             ),
             SizedBox(height: esMovil ? 6 : 10),
@@ -229,7 +231,7 @@ class FacturaDetalleDialog extends StatelessWidget {
                 return _row(
                   '${p.metodo}${p.esDivisa ? " (USD)" : " (Bs)"}',
                   'Bs. ${bs.toStringAsFixed(2)}'
-                      '${p.esDivisa ? "  •  IGTF 3%" : ""}',
+                      '${p.esDivisa ? "  â€¢  IGTF 3%" : ""}',
                 );
               }),
             ],
@@ -243,7 +245,7 @@ class FacturaDetalleDialog extends StatelessWidget {
                 '  (Bs. ${(f.montoIgtf * (f.tasaCambio ?? 0)).toStringAsFixed(2)})',
               ),
             _row(
-              'Tasa BCV histórica:',
+              'Tasa BCV histÃ³rica:',
               'Bs. ${(f.tasaCambio ?? 0).toStringAsFixed(4)}',
             ),
             _row(
@@ -258,7 +260,7 @@ class FacturaDetalleDialog extends StatelessWidget {
                 bold: true,
               ),
             const SizedBox(height: 10),
-            // Botones responsivos: en móvil se apilan
+            // Botones responsivos: en mÃ³vil se apilan
             esMovil
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -271,8 +273,8 @@ class FacturaDetalleDialog extends StatelessWidget {
                       const SizedBox(height: 8),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
+                          backgroundColor: Theme.of(context).colorScheme.tertiary,
+                          foregroundColor: Theme.of(context).colorScheme.onTertiary,
                         ),
                         icon: const Icon(Icons.print, size: 18),
                         onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),
@@ -337,8 +339,8 @@ class FacturaDetalleDialog extends StatelessWidget {
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
+                          backgroundColor: Theme.of(context).colorScheme.tertiary,
+                          foregroundColor: Theme.of(context).colorScheme.onTertiary,
                         ),
                         icon: const Icon(Icons.print, size: 18),
                         onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 import 'pos_screen.dart';
 import 'inventario_screen.dart';
@@ -97,6 +98,7 @@ class _MetricaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -114,10 +116,10 @@ class _MetricaCard extends StatelessWidget {
                 children: [
                   Icon(icon, color: color, size: 22),
                   if (onTap != null)
-                    const Icon(
+                    Icon(
                       Icons.chevron_right,
                       size: 18,
-                      color: Colors.grey,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                 ],
               ),
@@ -135,7 +137,7 @@ class _MetricaCard extends StatelessWidget {
                 titulo,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey[800],
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -144,7 +146,10 @@ class _MetricaCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   descripcion,
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 2,
                 ),
@@ -338,6 +343,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Panel Principal - Adrialga'),
@@ -347,7 +353,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               margin: const EdgeInsets.only(right: 12),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _tasaEsBCV ? Colors.blue.shade50 : Colors.orange.shade50,
+                color: _tasaEsBCV
+                    ? colorScheme.primaryContainer
+                    : colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -361,14 +369,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                       color: _tasaEsBCV
-                          ? Colors.blue.shade800
-                          : Colors.orange.shade800,
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurface,
                     ),
                   ),
                   if (!_tasaEsBCV)
-                    const Text(
+                    Text(
                       'Usando respaldo',
-                      style: TextStyle(fontSize: 9, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                 ],
               ),
@@ -826,14 +837,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 i.mensaje,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey[600],
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         if (i.accion != null)
-                          const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                          Icon(Icons.chevron_right, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ],
                     ),
                   ),
@@ -845,29 +856,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _panelErrorSerie() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: colorScheme.errorContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: Colors.red.shade700),
+          Icon(Icons.error_outline, color: colorScheme.error),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               'No se pudieron cargar las métricas financieras: $_errorSerie',
-              style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+              style: TextStyle(
+                color: colorScheme.onErrorContainer,
+                fontSize: 12,
+              ),
             ),
           ),
           GestureDetector(
             onTap: _cargarSerie,
-            child: const Text(
+            child: Text(
               'Reintentar',
               style: TextStyle(
-                color: Colors.blueAccent,
+                color: colorScheme.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -917,6 +932,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _serieBarras() {
+    final colorScheme = Theme.of(context).colorScheme;
     final serie = (_serie?['serie'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
         [];
@@ -925,60 +941,146 @@ class _DashboardScreenState extends State<DashboardScreen> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
           'Sin ventas registradas en el periodo seleccionado.',
-          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+          style: TextStyle(
+            color: colorScheme.onSurfaceVariant,
+            fontSize: 13,
+          ),
         ),
       );
     }
-    final maxMonto = serie.fold<double>(
-      0,
-      (max, f) {
-        final m = (f['montoBs'] as num? ?? f['monto'] as num? ?? 0).toDouble();
-        return m > max ? m : max;
-      },
-    );
 
-    return Column(
-      children: serie.map((f) {
-        final montoBs = (f['montoBs'] as num? ?? 0).toDouble();
-        final factor = maxMonto > 0 ? montoBs / maxMonto : 0.0;
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 76,
-                child: Text(
-                  '${f['etiqueta']}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+    // Normalización de montos: los valores de la API llegan como num/String.
+    final montos = serie
+        .map((f) => (f['montoBs'] as num? ?? f['monto'] as num? ?? 0).toDouble())
+        .toList();
+    final maxMonto = montos.fold<double>(0, (m, v) => v > m ? v : m);
+
+    return SizedBox(
+      height: 220,
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: maxMonto > 0 ? maxMonto * 1.15 : 1,
+          barTouchData: BarTouchData(
+            enabled: true,
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (_) => colorScheme.inverseSurface,
+              getTooltipItem: (group, gIdx, rod, rIdx) =>
+                  BarTooltipItem(
+                'Bs. ${_moneda(montos[gIdx])}\n',
+                TextStyle(
+                  color: colorScheme.onInverseSurface,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
                 ),
-              ),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: factor == 0 ? 0.02 : factor,
-                    child: Container(height: 16, color: Colors.blueAccent),
+                children: [
+                  TextSpan(
+                    text: '${serie[gIdx]['etiqueta']}',
+                    style: TextStyle(
+                      color: colorScheme.onInverseSurface,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 110,
-                child: Text(
-                  'Bs. ${_moneda(montoBs)}',
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        );
-      }).toList(),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              axisNameWidget: Text(
+                'Bs.',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 42,
+                interval: maxMonto > 0
+                    ? (maxMonto / 3).toDouble().clamp(1, double.infinity)
+                    : 1,
+                getTitlesWidget: (v, meta) => SideTitleWidget(
+                  meta: meta,
+                  space: 6,
+                  child: Text(
+                    _moneda(v),
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                getTitlesWidget: (v, meta) {
+                  final i = v.toInt();
+                  if (i < 0 || i >= serie.length) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${serie[i]['etiqueta']}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: maxMonto > 0
+                ? (maxMonto / 3).toDouble().clamp(1, double.infinity)
+                : 1,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              strokeWidth: 1,
+            ),
+          ),
+          borderData: FlBorderData(
+            show: true,
+            border: Border(
+              bottom: BorderSide(color: colorScheme.outlineVariant),
+            ),
+          ),
+          barGroups: List.generate(serie.length, (i) {
+            return BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: montos[i],
+                  color: colorScheme.primary,
+                  width: _anchoBarra(),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                ),
+              ],
+            );
+          }),
+        ),
+      ),
     );
+  }
+
+  /// Ancho de barra responsivo: móvil angosto usa barras delgadas para que
+  /// 24 tramos horarios quepan sin amontonarse; pantallas anchas engordan.
+  double _anchoBarra() {
+    final ancho = MediaQuery.of(context).size.width;
+    final n = ((_serie?['serie'] as List<dynamic>?)?.length ?? 8);
+    if (ancho < 600) return 8;
+    if (ancho < 1024) return 14;
+    // Escritorio: escala con la densidad de tramos de la serie.
+    return n > 12 ? 16 : 22;
   }
 
   /// Desglose de caja diaria por método de pago + alertas de stock.
@@ -1031,7 +1133,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     padding: const EdgeInsets.all(12),
                     child: Text(
                       'Sin productos vendidos en el periodo seleccionado.',
-                      style: TextStyle(color: Colors.grey[600]),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   )
                 : Column(
@@ -1159,7 +1263,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     padding: const EdgeInsets.all(12),
                     child: Text(
                       'Sin pagos registrados hoy.',
-                      style: TextStyle(color: Colors.grey[600]),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   )
                 : Column(
@@ -1206,13 +1312,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   vertical: 2,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade700,
+                  color: Theme.of(context).colorScheme.error,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   '${alertas.length} críticos',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onError,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1294,14 +1400,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
+            children: [
+              const Text(
                 'Ferretería Adrialga C.A.',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               Text(
                 'Sistema de gestión de ventas e inventario',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -1623,6 +1731,7 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final activo = widget.seleccionada;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -1636,11 +1745,13 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
             child: Card(
               margin: EdgeInsets.zero,
               elevation: activo ? 3 : 1,
-              color: activo ? Colors.blueAccent : null,
+              color: activo ? colorScheme.primary : null,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
-                  color: activo ? Colors.blueAccent : const Color(0xFF334155),
+                  color: activo
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
                   width: activo ? 2 : 1,
                 ),
               ),
@@ -1654,7 +1765,9 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
                       Icon(
                         Icons.calendar_month,
                         size: 18,
-                        color: activo ? Colors.white : Colors.blueAccent,
+                        color: activo
+                            ? colorScheme.onPrimary
+                            : colorScheme.primary,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -1663,8 +1776,8 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                           color: activo
-                              ? Colors.white
-                              : const Color(0xFFE2E8F0),
+                              ? colorScheme.onPrimary
+                              : colorScheme.onSurface,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1689,14 +1802,14 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
                     scale: _escala,
                     alignment: Alignment.bottomCenter,
                     child: Material(
-                      color: const Color(0xFF3B82F6),
+                      color: colorScheme.primary,
                       borderRadius: BorderRadius.circular(20),
                       elevation: 6,
                       child: InkWell(
                         onTap: widget.onVerFacturas,
                         borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 5,
                           ),
@@ -1707,14 +1820,14 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
                               Icon(
                                 Icons.receipt_long,
                                 size: 13,
-                                color: Colors.white,
+                                color: colorScheme.onPrimary,
                               ),
-                              SizedBox(width: 4),
+                              const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
                                   'Ver Facturas',
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: colorScheme.onPrimary,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                   ),

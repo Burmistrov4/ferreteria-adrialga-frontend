@@ -737,7 +737,14 @@ class ApiService {
           ...decod,
         };
       }
-      return {'success': false, 'error': _mensajeError(response.body)};
+      // Expone 'tipo' (CAJA_CERRADA | ARQUEO_PENDIENTE | ...) para que la UI
+      // dirija al cajero al módulo correcto con un mensaje accionable.
+      final decodErr = _decodificarError(response.body);
+      return {
+        'success': false,
+        'error': _mensajeError(response.body),
+        if (decodErr['tipo'] != null) 'tipo': decodErr['tipo'],
+      };
     } catch (e) {
       return {'success': false, 'error': 'No se pudo conectar con el servidor: $e'};
     }

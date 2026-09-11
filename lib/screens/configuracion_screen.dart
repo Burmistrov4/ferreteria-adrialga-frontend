@@ -59,10 +59,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             width: 140,
             child: Text(
               etiqueta,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -92,9 +92,9 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.currency_exchange,
-                        color: Colors.blueAccent,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                       const SizedBox(width: 8),
                       const Text(
@@ -128,7 +128,9 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
-                      color: _tasaEsBCV ? Colors.green.shade700 : Colors.orange,
+                      color: _tasaEsBCV
+                          ? Theme.of(context).colorScheme.tertiary
+                          : Theme.of(context).colorScheme.error,
                     ),
                   ),
                   Text(
@@ -137,7 +139,9 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                         : 'Origen: valor de respaldo (BCV sin conexión)',
                     style: TextStyle(
                       fontSize: 12,
-                      color: _tasaEsBCV ? Colors.grey : Colors.orange.shade700,
+                      color: _tasaEsBCV
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : Theme.of(context).colorScheme.error,
                     ),
                   ),
                 ],
@@ -206,7 +210,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       themeNotifier.isDark
                           ? 'Modo oscuro activado (se conserva en cada inicio)'
                           : 'Modo claro activado (se conserva en cada inicio)',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -222,7 +229,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ListTile(
-              leading: const Icon(Icons.category, color: Colors.green),
+              leading: Icon(Icons.category,
+                  color: Theme.of(context).colorScheme.tertiary),
               title: const Text('Categorías (Catálogo Maestro)'),
               subtitle: const Text(
                 'Agrupaciones de productos usadas en inventario y POS.',
@@ -243,7 +251,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ListTile(
-              leading: const Icon(Icons.help_outline, color: Colors.teal),
+              leading: Icon(Icons.help_outline,
+                  color: Theme.of(context).colorScheme.secondary),
               title: const Text('Tutorial de Cajero'),
               subtitle: const Text(
                 'Repite el recorrido guiado de primer uso (Caja → POS → Cobro → Arqueo).',

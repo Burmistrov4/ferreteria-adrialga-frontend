@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
@@ -24,11 +24,11 @@ class _CobroDialogState extends State<CobroDialog> {
   final _vesEfectivoController = TextEditingController(text: '0.00');
   final _pagoMovilController = TextEditingController(text: '0.00');
   final _puntoVentaController = TextEditingController(text: '0.00');
-  // Referencia del pago electrónico (Pago Móvil / Punto de Venta). Opcional:
+  // Referencia del pago electrÃ³nico (Pago MÃ³vil / Punto de Venta). Opcional:
   // se persiste en la tabla `pagos` del backend aunque el pago sea en Bs.
   final _referenciaController = TextEditingController();
 
-  // Imprimir ticket térmico automáticamente tras facturar (marcado por defecto).
+  // Imprimir ticket tÃ©rmico automÃ¡ticamente tras facturar (marcado por defecto).
   bool _imprimirTicket = true;
 
   double get _totalVES => widget.totalUSD * widget.tasaCambio;
@@ -42,10 +42,10 @@ class _CobroDialogState extends State<CobroDialog> {
   double get _montoPuntoVenta =>
       double.tryParse(_puntoVentaController.text) ?? 0.0;
 
-  // ── IGTF (3%): impuesto que se aplica EXCLUSIVAMENTE a los pagos en
-  // divisas extranjeras (aquí, el campo "Efectivo USD"). Se recalcula en
+  // â”€â”€ IGTF (3%): impuesto que se aplica EXCLUSIVAMENTE a los pagos en
+  // divisas extranjeras (aquÃ­, el campo "Efectivo USD"). Se recalcula en
   // tiempo real mientras el cajero ingresa el monto y se muestra su
-  // equivalencia en bolívares con la tasa BCV activa.
+  // equivalencia en bolÃ­vares con la tasa BCV activa.
   final double _igtfAliquota = 0.03;
   double get _montoDivisa => _montoUsdEfectivo;
   double get _igtfUSD => _montoDivisa * _igtfAliquota;
@@ -65,10 +65,10 @@ class _CobroDialogState extends State<CobroDialog> {
   bool get _pagoCompleto => _diferenciaUSD >= -0.01;
 
   /// Falta por pagar: solo cuando la diferencia es negativa (deuda); >0 deshabilita
-  /// el pago. Los remanentes ≤ 0.01 USD se toleran por precisión de coma flotante.
+  /// el pago. Los remanentes â‰¤ 0.01 USD se toleran por precisiÃ³n de coma flotante.
   double get _faltaPorPagar => _diferenciaUSD < 0 ? _diferenciaUSD.abs() : 0.0;
 
-  /// Habilita el botón CONFIRMAR PAGO únicamente cuando no hay deuda.
+  /// Habilita el botÃ³n CONFIRMAR PAGO Ãºnicamente cuando no hay deuda.
   bool get _habilitarPago => _faltaPorPagar <= 0.01;
 
   void _completarMontoExactoUSD() {
@@ -102,13 +102,13 @@ class _CobroDialogState extends State<CobroDialog> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Acentos semánticos (éxito/error/débito fiscal) con contraste en ambos temas.
-    final verde = Colors.green.shade400;
+    // Acentos semÃ¡nticos (Ã©xito/error/dÃ©bito fiscal) con contraste en ambos temas.
+    final verde = cs.tertiary;
     final rojo = cs.error;
-    final naranja = Colors.orange.shade300;
+    final naranja = cs.tertiary;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      // Responsive: en teléfonos el diálogo ocupa el ancho disponible
+      // Responsive: en telÃ©fonos el diÃ¡logo ocupa el ancho disponible
       // (respetando los insets de Material); en tablet/desktop se limita a 520.
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -118,7 +118,7 @@ class _CobroDialogState extends State<CobroDialog> {
           return Container(
             width: ancho,
             padding: const EdgeInsets.all(20.0),
-            // Scroll vertical: en móvil el diálogo no desborda con el teclado.
+            // Scroll vertical: en mÃ³vil el diÃ¡logo no desborda con el teclado.
             child: SingleChildScrollView(
               child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -158,9 +158,10 @@ class _CobroDialogState extends State<CobroDialog> {
                 children: [
                   Column(
                     children: [
-                      const Text(
+                      Text(
                         'Total USD',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                        style: TextStyle(
+                            fontSize: 12, color: cs.onSurfaceVariant),
                       ),
                       Text(
                         '\$${widget.totalUSD.toStringAsFixed(2)}',
@@ -175,9 +176,10 @@ class _CobroDialogState extends State<CobroDialog> {
                   const VerticalDivider(),
                   Column(
                     children: [
-                      const Text(
+                      Text(
                         'Total VES',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                        style: TextStyle(
+                            fontSize: 12, color: cs.onSurfaceVariant),
                       ),
                       Text(
                         'Bs. ${_totalVES.toStringAsFixed(2)}',
@@ -193,7 +195,7 @@ class _CobroDialogState extends State<CobroDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            // Atajos rápidos
+            // Atajos rÃ¡pidos
             Row(
               children: [
                 OutlinedButton.icon(
@@ -213,13 +215,13 @@ class _CobroDialogState extends State<CobroDialog> {
             // Campos de Pago (responsivos: apilados en pantallas angostas)
             _camposPago(ancho),
             const SizedBox(height: 10),
-            // Referencia del pago electrónico (Pago Móvil / Punto de Venta).
+            // Referencia del pago electrÃ³nico (Pago MÃ³vil / Punto de Venta).
             // Opcional: se guarda en la factura/pagos incluso si el pago
-            // fue en bolívares, junto con la tasa BCV usada en ese momento.
+            // fue en bolÃ­vares, junto con la tasa BCV usada en ese momento.
             TextField(
               controller: _referenciaController,
               decoration: const InputDecoration(
-                labelText: 'Referencia (opcional - Pago Móvil / Punto)',
+                labelText: 'Referencia (opcional - Pago MÃ³vil / Punto)',
                 prefixIcon: Icon(Icons.receipt_long),
                 border: OutlineInputBorder(),
                 isDense: true,
@@ -361,10 +363,10 @@ class _CobroDialogState extends State<CobroDialog> {
                             final vueltoVES = _diferenciaVES > 0 ? _diferenciaVES : 0.0;
 
                             // Solo se exige "cambio de gaveta" si el excedente
-                            // proviene de EFECTIVO físico y es un cambio real
-                            // (≥ media centésima). Un excedente sub-centavo o
-                            // generado por Punto de Venta/Pago Móvil NO requiere
-                            // dinero del cajón (evita el falso "Fondos insuficientes").
+                            // proviene de EFECTIVO fÃ­sico y es un cambio real
+                            // (â‰¥ media centÃ©sima). Un excedente sub-centavo o
+                            // generado por Punto de Venta/Pago MÃ³vil NO requiere
+                            // dinero del cajÃ³n (evita el falso "Fondos insuficientes").
                             final excesoEfectivoUSD =
                                 _montoUsdEfectivo - _cargoTotalUSD;
                             final excesoEfectivoVES =
@@ -454,16 +456,16 @@ class _CobroDialogState extends State<CobroDialog> {
                 const Text('No hay saldo suficiente para dar el vuelto.'),
                 const SizedBox(height: 12),
                 Text('Saldo disponible:', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('  • USD: \$${saldoUSD.toStringAsFixed(2)}'),
-                Text('  • VES: Bs. ${saldoVES.toStringAsFixed(2)}'),
+                Text('  â€¢ USD: \$${saldoUSD.toStringAsFixed(2)}'),
+                Text('  â€¢ VES: Bs. ${saldoVES.toStringAsFixed(2)}'),
                 if (faltanteUSD > 0 || faltanteVES > 0) ...[
                   const SizedBox(height: 8),
                   Text('Faltante:', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.error)),
-                  if (faltanteUSD > 0) Text('  • USD: \$${faltanteUSD.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-                  if (faltanteVES > 0) Text('  • VES: Bs. ${faltanteVES.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                  if (faltanteUSD > 0) Text('  â€¢ USD: \$${faltanteUSD.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                  if (faltanteVES > 0) Text('  â€¢ VES: Bs. ${faltanteVES.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                 ],
                 const SizedBox(height: 12),
-                const Text('Sugerencia: Solicite al cliente el monto exacto o use otro método de pago.',
+                const Text('Sugerencia: Solicite al cliente el monto exacto o use otro mÃ©todo de pago.',
                   style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
               ],
             ),
@@ -480,7 +482,7 @@ class _CobroDialogState extends State<CobroDialog> {
       return puedeProcesar;
     } catch (e) {
       // Si el endpoint no responde, permitir proceso (fail-open para no bloquear ventas)
-      // En producción, podría cambiarse a fail-close según política de riesgo
+      // En producciÃ³n, podrÃ­a cambiarse a fail-close segÃºn polÃ­tica de riesgo
       debugPrint('Error verificando fondos: $e');
       return true;
     }
@@ -508,7 +510,7 @@ class _CobroDialogState extends State<CobroDialog> {
   }
 
   /// Campos de pago: en 2 columnas si hay ancho, apilados verticalmente en
-  /// móvil (<380dp) para evitar el RenderFlex overflow horizontal.
+  /// mÃ³vil (<380dp) para evitar el RenderFlex overflow horizontal.
   Widget _camposPago(double ancho) {
     final fUsd = _buildInputField(
       controller: _usdEfectivoController,
@@ -522,7 +524,7 @@ class _CobroDialogState extends State<CobroDialog> {
     );
     final fMovil = _buildInputField(
       controller: _pagoMovilController,
-      label: 'Pago Móvil',
+      label: 'Pago MÃ³vil',
       icon: Icons.phone_android,
     );
     final fPunto = _buildInputField(

@@ -6,6 +6,29 @@ import 'package:flutter/services.dart';
 import '../models/cliente_model.dart';
 import '../services/api_service.dart';
 
+/// Validador fiscal de Cédula/RIF: `^([VEJPG]-)?\d{7,9}$`.
+/// Acepta prefijos V/E (cédula) y J/G/P (jurídico/pasaporte) y 7 a 9 dígitos.
+/// Se aplica tras forzar mayúsculas y retirar guiones del input.
+final RegExp _docFiscalRegExp = RegExp(r'^([VEJPG]-)?\d{7,9}$');
+
+/// Normaliza un documento: mayúsculas, sin espacios ni guiones internos.
+/// Si el usuario pega "v-1234567", devuelve "V1234567" (el prefijo visual
+/// lo aporta el dropdown, así que aquí solo se depura el número).
+String _normalizarDocumento(String valor) =>
+    valor.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '');
+
+/// Mensaje de error de validación del documento o null si es válido.
+String? _validarDocumento(String? valor, String tipoDoc) {
+  final normalizado = _normalizarDocumento(valor ?? '');
+  if (normalizado.isEmpty) return 'El número de documento es obligatorio';
+  // Reconstruir con prefijo para validar contra el patrón fiscal completo.
+  final conPrefijo = '$tipoDoc-$normalizado';
+  if (!_docFiscalRegExp.hasMatch(conPrefijo)) {
+    return 'Formato inválido: use 7 a 9 dígitos (ej. $tipoDoc-12345678)';
+  }
+  return null;
+}
+
 class ClienteDialog extends StatefulWidget {
   final ClienteModel? cliente;
 
@@ -29,6 +52,9 @@ class _ClienteDialogState extends State<ClienteDialog>
   List<ClienteModel> _recientes = [];
   bool _mostrandoRecientes = true;
   Timer? _debounce;
+
+  // Clave de formulario para validación estricta del registro de cliente.
+  final _formKey = GlobalKey<FormState>();
 
   // Naturaleza del documento: 'cedula' (Persona Natural) o 'rif' (Jurídico /
   // Pasaporte). El dropdown de prefijos se filtra según esta selección.
@@ -135,7 +161,7 @@ class _ClienteDialogState extends State<ClienteDialog>
   }
 
   Future<void> _consultarSeniat() async {
-    final numDoc = _numDocController.text.trim();
+    final numDoc = _normalizarDocumento(_numDocController.text);
     if (numDoc.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingrese el número de Cédula o RIF')),
@@ -168,19 +194,14 @@ class _ClienteDialogState extends State<ClienteDialog>
   }
 
   Future<void> _guardarYSeleccionar() async {
-    if (_numDocController.text.isEmpty || _nombreController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Número de Documento y Nombre son obligatorios'),
-        ),
-      );
-      return;
-    }
+    // Validación estricta del formulario: documento fiscal con regex y
+    // campos obligatorios antes de tocar la API.
+    if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final nuevoCliente = ClienteModel(
       clienteId: widget.cliente?.clienteId,
       tipoDocumento: _tipoDoc,
-      numDocumento: _numDocController.text.trim(),
+      numDocumento: _normalizarDocumento(_numDocController.text),
       nombreRazonSocial: _nombreController.text.trim(),
       direccion: _direccionController.text.trim().isEmpty
           ? null
@@ -229,17 +250,34 @@ class _ClienteDialogState extends State<ClienteDialog>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final screenSize = MediaQuery.of(context).size;
+
+    // Diálogo elástico (equivalente a flexbox): en móvil/PC ocupa hasta el
+    // 92% de la pantalla; en escritorio se limita a 560 px de ancho para que
+    // no se estire deforme en monitores grandes. La altura nunca es fija:
+    // el contenido fluye dentro de un rango con scroll interno garantizado.
+    final dialogWidth = screenSize.width < 600 ? screenSize.width * 0.92 : 560.0;
+    final dialogMaxHeight = screenSize.height * 0.90;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: SizedBox(
-        width: 550,
-        height: 520,
+      backgroundColor: colorScheme.surface,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: dialogWidth,
+          maxHeight: dialogMaxHeight,
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             TabBar(
               controller: _tabController,
-              labelColor: Theme.of(context).primaryColor,
-              unselectedLabelColor: Colors.grey,
+              labelColor: colorScheme.primary,
+              // Contraste dinámico: en oscuro usa onSurfaceVariant, en claro
+              // el gris de Material hereda del tema y se garantiza legible.
+              unselectedLabelColor: colorScheme.onSurfaceVariant,
+              indicatorColor: colorScheme.primary,
               tabs: const [
                 Tab(icon: Icon(Icons.search), text: 'Buscar RIF / Cédula'),
                 Tab(
@@ -248,278 +286,422 @@ class _ClienteDialogState extends State<ClienteDialog>
                 ),
               ],
             ),
-            Expanded(
+            Flexible(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Búsqueda por Nombre, Cédula o RIF',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                  _buildBusquedaTab(colorScheme),
+                  _buildRegistroTab(colorScheme),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBusquedaTab(ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Búsqueda por Nombre, Cédula o RIF',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _searchDocController,
+            decoration: InputDecoration(
+              labelText: 'Nombre / Cédula / RIF (búsqueda en tiempo real)',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.badge),
+              suffixIcon: _isSearching
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
                         ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _searchDocController,
-                          decoration: InputDecoration(
-                            labelText:
-                                'Nombre / Cédula / RIF (búsqueda en tiempo real)',
-                            border: const OutlineInputBorder(),
-                            prefixIcon: const Icon(Icons.badge),
-                            suffixIcon: _isSearching
-                                ? const Padding(
-                                    padding: EdgeInsets.all(10),
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
-                                : (_searchDocController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          _searchDocController.clear();
-                                          _onSearchChanged('');
-                                        },
-                                      )
-                                    : null),
-                          ),
-                          onChanged: _onSearchChanged,
-                          onSubmitted: (_) => _buscarClienteLocal(),
-                        ),
-                        const SizedBox(height: 12),
-                        if (_mostrandoRecientes)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Últimos clientes registrados',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ),
-                        Expanded(
-                          child: _resultados.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    _searchDocController.text.trim().isEmpty
-                                        ? 'Aún no hay clientes registrados.'
-                                        : 'Sin coincidencias. Use el registro SENIAT o Manual.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: Colors.grey[600]),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  itemCount: _resultados.length,
-                                  separatorBuilder: (_, _) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, index) {
-                                    final c = _resultados[index];
-                                    return ListTile(
-                                      leading: CircleAvatar(
-                                        child: Text(
-                                          c.nombreRazonSocial.isNotEmpty
-                                              ? c.nombreRazonSocial[0]
-                                                  .toUpperCase()
-                                              : 'C',
-                                        ),
-                                      ),
-                                      title: Text(
-                                        c.nombreRazonSocial,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      subtitle: Text(
-                                        '${c.tipoDocumento}-${c.numDocumento}'
-                                        '${c.telefono != null && c.telefono!.isNotEmpty ? ' | Tel: ${c.telefono}' : ''}',
-                                      ),
-                                      onTap: () =>
-                                          Navigator.of(context).pop(c),
-                                    );
-                                  },
-                                ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.of(context)
-                                  .pop(ClienteModel.consumidorFinal()),
-                          child: const Text('Usar Consumidor Final (ID 1)'),
-                        ),
-                      ],
+                      ),
+                    )
+                  : (_searchDocController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchDocController.clear();
+                            _onSearchChanged('');
+                          },
+                        )
+                      : null),
+            ),
+            onChanged: _onSearchChanged,
+            onSubmitted: (_) => _buscarClienteLocal(),
+          ),
+          const SizedBox(height: 12),
+          if (_mostrandoRecientes)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Últimos clientes registrados',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          Flexible(
+            child: _resultados.isEmpty
+                ? Center(
+                    child: Text(
+                      _searchDocController.text.trim().isEmpty
+                          ? 'Aún no hay clientes registrados.'
+                          : 'Sin coincidencias. Use el registro SENIAT o Manual.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _resultados.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final c = _resultados[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: colorScheme.primaryContainer,
+                          foregroundColor: colorScheme.onPrimaryContainer,
+                          child: Text(
+                            c.nombreRazonSocial.isNotEmpty
+                                ? c.nombreRazonSocial[0].toUpperCase()
+                                : 'C',
+                          ),
+                        ),
+                        title: Text(
+                          c.nombreRazonSocial,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${c.tipoDocumento}-${c.numDocumento}'
+                          '${c.telefono != null && c.telefono!.isNotEmpty ? ' | Tel: ${c.telefono}' : ''}',
+                        ),
+                        onTap: () => Navigator.of(context).pop(c),
+                      );
+                    },
                   ),
-                  SingleChildScrollView(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(ClienteModel.consumidorFinal()),
+            child: const Text('Usar Consumidor Final (ID 1)'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegistroTab(ColorScheme colorScheme) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'cedula',
+                  label: Text('Cédula (Natural)'),
+                  icon: Icon(Icons.person),
+                ),
+                ButtonSegment(
+                  value: 'rif',
+                  label: Text('RIF / Pasaporte'),
+                  icon: Icon(Icons.business),
+                ),
+              ],
+              selected: {_grupoDoc},
+              onSelectionChanged: (seleccion) {
+                setState(() {
+                  _grupoDoc = seleccion.first;
+                  // El primer prefijo del grupo pasa a estar activo.
+                  _tipoDoc = _prefijosPorGrupo[_grupoDoc]!.first;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            // En pantallas angostas el bloque Documento apila verticalmente;
+            // en anchas mantiene la fila compacta (flexbox adaptativo).
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final apilar = constraints.maxWidth < 420;
+                final bloqueDocumento = Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: apilar
+                      ? CrossAxisAlignment.stretch
+                      : CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(
-                              value: 'cedula',
-                              label: Text('Cédula (Natural)'),
-                              icon: Icon(Icons.person),
-                            ),
-                            ButtonSegment(
-                              value: 'rif',
-                              label: Text('RIF / Pasaporte'),
-                              icon: Icon(Icons.business),
-                            ),
-                          ],
-                          selected: {_grupoDoc},
-                          onSelectionChanged: (seleccion) {
-                            setState(() {
-                              _grupoDoc = seleccion.first;
-                              // El primer prefijo del grupo pasa a estar activo.
-                              _tipoDoc = _prefijosPorGrupo[_grupoDoc]!.first;
-                            });
+                        DropdownButton<String>(
+                          value: _tipoDoc,
+                          hint: Text(
+                            _grupoDoc == 'cedula' ? 'V- / E-' : 'J- / G- / P-',
+                          ),
+                          items: _prefijosPorGrupo[_grupoDoc]!
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text('$t-'),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _tipoDoc = val);
+                            }
                           },
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            DropdownButton<String>(
-                              value: _tipoDoc,
-                              hint: Text(
-                                _grupoDoc == 'cedula' ? 'V- / E-' : 'J- / G- / P-',
-                              ),
-                              items: _prefijosPorGrupo[_grupoDoc]!
-                                  .map(
-                                    (t) => DropdownMenuItem(
-                                      value: t,
-                                      child: Text('$t-'),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() => _tipoDoc = val);
-                                }
-                              },
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _numDocController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: (v) => _validarDocumento(v, _tipoDoc),
+                            decoration: const InputDecoration(
+                              labelText: 'Cédula / RIF (Sin Guiones)',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              helperText: '7 a 9 dígitos, sin guiones ni puntos',
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _numDocController,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                ],
-                                decoration: const InputDecoration(
-                                  labelText: 'Cédula / RIF (Sin Guiones)',
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton.icon(
-                              onPressed: _isConsultingSeniat
-                                  ? null
-                                  : _consultarSeniat,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue.shade700,
-                                foregroundColor: Colors.white,
-                              ),
-                              icon: _isConsultingSeniat
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.cloud_download, size: 18),
-                              label: const Text('SENIAT'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _nombreController,
-                          decoration: const InputDecoration(
-                            labelText: 'Nombre / Razón Social *',
-                            border: OutlineInputBorder(),
-                            isDense: true,
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _direccionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Dirección Fiscal',
-                            border: OutlineInputBorder(),
-                            isDense: true,
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: _isConsultingSeniat
+                              ? null
+                              : _consultarSeniat,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: colorScheme.primary,
+                            foregroundColor: colorScheme.onPrimary,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _telefonoController,
-                                keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
-                                  labelText: 'Teléfono',
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                decoration: const InputDecoration(
-                                  labelText: 'Correo Electrónico',
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: ElevatedButton.icon(
-                            onPressed: _isSaving ? null : _guardarYSeleccionar,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                            ),
-                            icon: _isSaving
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.check_circle),
-                            label: const Text('GUARDAR Y SELECCIONAR'),
-                          ),
+                          icon: _isConsultingSeniat
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.cloud_download, size: 18),
+                          label: const Text('SENIAT'),
                         ),
                       ],
                     ),
+                  ],
+                );
+
+                if (apilar) {
+                  // Apilado: cada elemento ocupa su propia línea con zonas
+                  // táctiles mínimas garantizadas.
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: DropdownButton<String>(
+                          value: _tipoDoc,
+                          hint: Text(
+                            _grupoDoc == 'cedula' ? 'V- / E-' : 'J- / G- / P-',
+                          ),
+                          items: _prefijosPorGrupo[_grupoDoc]!
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text('$t-'),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _tipoDoc = val);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _numDocController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        validator: (v) => _validarDocumento(v, _tipoDoc),
+                        decoration: const InputDecoration(
+                          labelText: 'Cédula / RIF (Sin Guiones)',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          helperText: '7 a 9 dígitos, sin guiones ni puntos',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: _isConsultingSeniat
+                              ? null
+                              : _consultarSeniat,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: colorScheme.primary,
+                            foregroundColor: colorScheme.onPrimary,
+                          ),
+                          icon: _isConsultingSeniat
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.cloud_download, size: 18),
+                          label: const Text('SENIAT'),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return bloqueDocumento;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _nombreController,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return 'El Nombre / Razón Social es obligatorio';
+                }
+                return null;
+              },
+              inputFormatters: [
+                // Forzar mayúsculas en la Razón Social (fiscal).
+                TextInputFormatter.withFunction((oldValue, newValue) =>
+                    newValue.copyWith(text: newValue.text.toUpperCase())),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Nombre / Razón Social *',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _direccionController,
+              decoration: const InputDecoration(
+                labelText: 'Dirección Fiscal',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final campos = [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _telefonoController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Teléfono',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
                   ),
-                ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Correo Electrónico',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                ];
+                // En pantallas angostas los dos campos apilan para evitar
+                // Overflow/RenderFlex y garantizar 48dp táctiles.
+                if (constraints.maxWidth < 420) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextFormField(
+                        controller: _telefonoController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Teléfono',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Correo Electrónico',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return Row(children: campos);
+              },
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _guardarYSeleccionar,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.secondary,
+                  foregroundColor: colorScheme.onSecondary,
+                ),
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.check_circle),
+                label: const Text('GUARDAR Y SELECCIONAR'),
               ),
             ),
           ],

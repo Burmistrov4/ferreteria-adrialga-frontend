@@ -297,9 +297,9 @@ class _PosScreenState extends State<PosScreen> {
                         ),
                         Text(
                           'SKU: ${prod.skuCodigo}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Colors.grey,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Row(
@@ -628,13 +628,18 @@ class _PosScreenState extends State<PosScreen> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
-                        color: _tasaEsBCV ? null : Colors.orange.shade800,
+                        color: _tasaEsBCV
+                            ? null
+                            : Theme.of(context).colorScheme.error,
                       ),
                     ),
                     if (!_tasaEsBCV)
-                      const Text(
+                      Text(
                         'Usando valor de respaldo',
-                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                   ],
                 ),
@@ -760,7 +765,10 @@ class _CartItemTileState extends State<_CartItemTile> {
                     ),
                     Text(
                       '\$${widget.item.producto.precioVenta.toStringAsFixed(2)} c/u = \$${widget.item.subtotal.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),

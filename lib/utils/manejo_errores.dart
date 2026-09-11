@@ -17,7 +17,7 @@ class ManejoErrores {
     try {
       final resultado = await operacion();
       if (mostrarExito && mensajeExito != null && context.mounted) {
-        _mostrarSnackBar(context, mensajeExito, Colors.green);
+        _mostrarSnackBar(context, mensajeExito, _tono(context, _Tono.exito));
       }
       return resultado;
     } on http.ClientException {
@@ -25,7 +25,7 @@ class ManejoErrores {
         _mostrarSnackBar(
           context,
           'Sin conexión al servidor. Verifica tu red.',
-          Colors.orange,
+          _tono(context, _Tono.alerta),
         );
       }
       return null;
@@ -34,16 +34,30 @@ class ManejoErrores {
         _mostrarSnackBar(
           context,
           'La operación tardó mucho. Reintentando...',
-          Colors.orange,
+          _tono(context, _Tono.alerta),
         );
       }
       return null;
     } catch (e) {
       if (context.mounted) {
         final mensaje = _extraerMensaje(e);
-        _mostrarSnackBar(context, mensaje, Colors.red);
+        _mostrarSnackBar(context, mensaje, _tono(context, _Tono.error));
       }
       return null;
+    }
+  }
+
+  /// Tonos semánticos derivados del tema activo (contraste garantizado en
+  /// modo claro y oscuro, sin colores fijos que desaparecen en dark mode).
+  static Color _tono(BuildContext context, _Tono tono) {
+    final cs = Theme.of(context).colorScheme;
+    switch (tono) {
+      case _Tono.exito:
+        return cs.tertiary;
+      case _Tono.alerta:
+        return cs.secondary;
+      case _Tono.error:
+        return cs.error;
     }
   }
 
@@ -69,8 +83,17 @@ class ManejoErrores {
   static String _extraerMensaje(Object e) {
     final raw = e.toString();
     // Buscar patrones comunes de error del backend
+    if (raw.contains('ARQUEO_PENDIENTE')) {
+      return 'Arqueo pendiente: hay un turno de un día anterior sin '
+          'cerrar. Realice el arqueo Z de esa jornada en el módulo de Caja '
+          'antes de vender.';
+    }
     if (raw.contains('CAJA_CERRADA')) {
       return 'Caja cerrada. Abre caja para continuar.';
+    }
+    if (raw.contains('SALDO_INSUFICIENTE')) {
+      return 'Saldo insuficiente en caja para la devolución. Solicite un '
+          'Ingreso de Caja al supervisor.';
     }
     if (raw.contains('409') || raw.contains('Conflict')) {
       return 'Conflicto: el registro ya existe o hay duplicidad.';
@@ -88,3 +111,6 @@ class ManejoErrores {
     return raw.replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
   }
 }
+
+/// Tonos semánticos soportados por [_tono].
+enum _Tono { exito, alerta, error }

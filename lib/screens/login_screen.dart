@@ -48,9 +48,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.redAccent,
-          content: Text('Credenciales incorrectas o servidor fuera de línea'),
+        SnackBar(
+          backgroundColor: Theme.of(context).colorScheme.error,
+          content: const Text(
+              'Credenciales incorrectas o servidor fuera de línea'),
         ),
       );
     }
@@ -75,10 +76,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.storefront,
                       size: 64,
-                      color: Colors.blueAccent,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(height: 16),
                     const Text(
@@ -125,7 +126,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
                                   strokeWidth: 2,
                                 ),
                               )
