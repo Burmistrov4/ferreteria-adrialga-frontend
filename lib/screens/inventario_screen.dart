@@ -247,12 +247,16 @@ class _InventarioScreenState extends State<InventarioScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            '\$${prod.precioVenta.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: cs.primary,
+                          Flexible(
+                            child: Text(
+                              '\$${prod.precioVenta.toStringAsFixed(2)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: cs.primary,
+                              ),
                             ),
                           ),
                           IconButton(

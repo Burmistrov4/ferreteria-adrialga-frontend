@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Loro\Desktop\Cuarto Semestre\3. Analisis de Sistemas II\Adrialga_Sistema_Renovado\adrialga_frontend\build\windows\x64\pdfium-download\CMakeFiles\fdffa2ebfda4520a9e689905d355365d\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{AEEBF000-504E-3023-B349-64B0783FE2B5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

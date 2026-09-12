@@ -176,15 +176,19 @@ class _ClientesScreenState extends State<ClientesScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
+                                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                                   icon: Icon(Icons.edit, color: cs.primary),
+                                  tooltip: 'Editar cliente',
                                   onPressed: () => _abrirDialogoCliente(cliente),
                                 ),
                                 if (cliente.clienteId != null)
                                   IconButton(
+                                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                                     icon: Icon(
                                       Icons.delete,
                                       color: cs.error,
                                     ),
+                                    tooltip: 'Eliminar cliente',
                                     onPressed: () => _eliminarCliente(cliente),
                                   ),
                               ],

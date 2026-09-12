@@ -180,85 +180,93 @@ class FacturaDetalleDialog extends StatelessWidget {
               ],
             ),
             const Divider(),
-            Text(
-              'Cliente: ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
-              style: TextStyle(fontSize: esMovil ? 11 : 13),
-            ),
-            Text(
-              'RIF/CÃ©dula: ${f.clienteRif!.isNotEmpty ? f.clienteRif : "V-00000000"}',
-              style: TextStyle(fontSize: esMovil ? 11 : 13),
-            ),
-            Text(
-              'Fecha: ${_fmtFecha(f.fechaEmision)} â€¢ Atendido por: ${f.usuarioNombre!.isNotEmpty ? f.usuarioNombre : "Administrador"}',
-              style: TextStyle(fontSize: esMovil ? 11 : 13),
-            ),
-            SizedBox(height: esMovil ? 6 : 10),
+            // Info + tabla + pagos + totales dentro del scroll flexible:
+            // con muchas líneas de producto/pagos, el diálogo nunca desborda.
             Flexible(
               child: SingleChildScrollView(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columnSpacing: esMovil ? 12 : 18,
-                    dataRowMinHeight: 30,
-                    dataRowMaxHeight: 40,
-                    columns: const [
-                      DataColumn(label: Text('Producto')),
-                      DataColumn(label: Text('Cant.')),
-                      DataColumn(label: Text('Precio')),
-                      DataColumn(label: Text('Subtotal')),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cliente: ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
+                      style: TextStyle(fontSize: esMovil ? 11 : 13),
+                    ),
+                    Text(
+                      'RIF/CÃ©dula: ${f.clienteRif!.isNotEmpty ? f.clienteRif : "V-00000000"}',
+                      style: TextStyle(fontSize: esMovil ? 11 : 13),
+                    ),
+                    Text(
+                      'Fecha: ${_fmtFecha(f.fechaEmision)} â€¢ Atendido por: ${f.usuarioNombre!.isNotEmpty ? f.usuarioNombre : "Administrador"}',
+                      style: TextStyle(fontSize: esMovil ? 11 : 13),
+                    ),
+                    SizedBox(height: esMovil ? 6 : 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        columnSpacing: esMovil ? 12 : 18,
+                        dataRowMinHeight: 30,
+                        dataRowMaxHeight: 40,
+                        columns: const [
+                          DataColumn(label: Text('Producto')),
+                          DataColumn(label: Text('Cant.')),
+                          DataColumn(label: Text('Precio')),
+                          DataColumn(label: Text('Subtotal')),
+                        ],
+                        rows: f.detalles.map((d) {
+                          return DataRow(cells: [
+                            DataCell(Text(d.productoNombre, style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                            DataCell(Text('${d.cantidad}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                            DataCell(Text('\$${d.precioUnitario.toStringAsFixed(2)}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                            DataCell(Text('\$${d.subtotal.toStringAsFixed(2)}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
+                          ]);
+                        }).toList(),
+                      ),
+                    ),
+                    if (f.pagos.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Forma de Pago (desglose):',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      ...f.pagos.map((p) {
+                        final bs = p.enBolivares(f.tasaCambio ?? 0);
+                        return _row(
+                          '${p.metodo}${p.esDivisa ? " (USD)" : " (Bs)"}',
+                          'Bs. ${bs.toStringAsFixed(2)}'
+                              '${p.esDivisa ? "  â€¢  IGTF 3%" : ""}',
+                        );
+                      }),
                     ],
-                    rows: f.detalles.map((d) {
-                      return DataRow(cells: [
-                        DataCell(Text(d.productoNombre, style: TextStyle(fontSize: esMovil ? 11 : 13))),
-                        DataCell(Text('${d.cantidad}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
-                        DataCell(Text('\$${d.precioUnitario.toStringAsFixed(2)}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
-                        DataCell(Text('\$${d.subtotal.toStringAsFixed(2)}', style: TextStyle(fontSize: esMovil ? 11 : 13))),
-                      ]);
-                    }).toList(),
-                  ),
+                    const Divider(),
+                    _row('Base Imponible:', '\$${f.subtotal.toStringAsFixed(2)}'),
+                    _row('IVA (16%):', '\$${f.totalIva.toStringAsFixed(2)}'),
+                    if (f.montoIgtf > 0)
+                      _row(
+                        'IGTF (3% div.):',
+                        '\$${f.montoIgtf.toStringAsFixed(2)} USD'
+                        '  (Bs. ${(f.montoIgtf * (f.tasaCambio ?? 0)).toStringAsFixed(2)})',
+                      ),
+                    _row(
+                      'Tasa BCV histÃ³rica:',
+                      'Bs. ${(f.tasaCambio ?? 0).toStringAsFixed(4)}',
+                    ),
+                    _row(
+                      'TOTAL:',
+                      '\$${f.totalGeneral.toStringAsFixed(2)}',
+                      bold: true,
+                    ),
+                    if ((f.tasaCambio ?? 0) > 0)
+                      _row(
+                        'TOTAL Bs (SENIAT):',
+                        'Bs. ${(f.totalGeneral * (f.tasaCambio ?? 0)).toStringAsFixed(2)}',
+                        bold: true,
+                      ),
+                  ],
                 ),
               ),
             ),
-            if (f.pagos.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              const Text(
-                'Forma de Pago (desglose):',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              ...f.pagos.map((p) {
-                final bs = p.enBolivares(f.tasaCambio ?? 0);
-                return _row(
-                  '${p.metodo}${p.esDivisa ? " (USD)" : " (Bs)"}',
-                  'Bs. ${bs.toStringAsFixed(2)}'
-                      '${p.esDivisa ? "  â€¢  IGTF 3%" : ""}',
-                );
-              }),
-            ],
-            const Divider(),
-            _row('Base Imponible:', '\$${f.subtotal.toStringAsFixed(2)}'),
-            _row('IVA (16%):', '\$${f.totalIva.toStringAsFixed(2)}'),
-            if (f.montoIgtf > 0)
-              _row(
-                'IGTF (3% div.):',
-                '\$${f.montoIgtf.toStringAsFixed(2)} USD'
-                '  (Bs. ${(f.montoIgtf * (f.tasaCambio ?? 0)).toStringAsFixed(2)})',
-              ),
-            _row(
-              'Tasa BCV histÃ³rica:',
-              'Bs. ${(f.tasaCambio ?? 0).toStringAsFixed(4)}',
-            ),
-            _row(
-              'TOTAL:',
-              '\$${f.totalGeneral.toStringAsFixed(2)}',
-              bold: true,
-            ),
-            if ((f.tasaCambio ?? 0) > 0)
-              _row(
-                'TOTAL Bs (SENIAT):',
-                'Bs. ${(f.totalGeneral * (f.tasaCambio ?? 0)).toStringAsFixed(2)}',
-                bold: true,
-              ),
             const SizedBox(height: 10),
             // Botones responsivos: en mÃ³vil se apilan
             esMovil
@@ -369,12 +377,17 @@ class FacturaDetalleDialog extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
+          const SizedBox(width: 8),
           Text(
             value,
             style: TextStyle(

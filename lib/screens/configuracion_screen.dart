@@ -75,7 +75,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('8. Configuración del Sistema')),
+      appBar: AppBar(title: const Text('Configuración del Sistema')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -183,7 +183,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    SegmentedButton<ThemeModePreference>(
+                    // Scroll horizontal: en móviles de 320dp los 3 segmentos
+                    // (icono + texto) no caben siempre; evita RenderFlex overflow.
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SegmentedButton<ThemeModePreference>(
                       segments: const [
                         ButtonSegment(
                           value: ThemeModePreference.system,
@@ -204,6 +208,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       selected: {themeNotifier.preference},
                       onSelectionChanged: (sel) =>
                           themeNotifier.setPreference(sel.first),
+                    ),
                     ),
                     const SizedBox(height: 8),
                     Text(

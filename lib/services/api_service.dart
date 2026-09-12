@@ -480,7 +480,50 @@ class ApiService {
     }
   }
 
-  static Future<bool> registrarEntradaMercancia(
+  /// Edita un proveedor existente (PUT /api/proveedores/:id).
+  static Future<Map<String, dynamic>> updateProveedor(
+    int id,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/proveedores/$id'),
+            headers: _headers,
+            body: jsonEncode(data),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) return {'success': true};
+      return {'success': false, 'error': response.body};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Elimina un proveedor sin historial (DELETE /api/proveedores/:id).
+  /// El backend responde 409 si tiene compras o CxP pendientes.
+  static Future<Map<String, dynamic>> deleteProveedor(int id) async {
+    try {
+      final response = await http
+          .delete(Uri.parse('$baseUrl/proveedores/$id'), headers: _headers)
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) return {'success': true};
+      try {
+        final body = jsonDecode(response.body);
+        return {'success': false, 'error': body['message'] ?? response.body};
+      } catch (_) {
+        return {'success': false, 'error': response.body};
+      }
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Registra una entrada de mercancía (POST /api/notas).
+  /// Devuelve un mapa con `success` y, en error, el `error`/`tipo` detallado
+  /// (el backend puede devolver 422 SALDO_INSUFICIENTE con texto accionable
+  /// para que la UI pueda orientar al cajero a Crédito o Ingreso de Caja).
+  static Future<Map<String, dynamic>> registrarEntradaMercancia(
     Map<String, dynamic> data,
   ) async {
     try {
@@ -493,9 +536,19 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (_) {
-      return false;
+      final decod = _decodificarError(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...decod};
+      }
+      return {
+        'success': false,
+        'error': (decod['error'] as String?) ??
+            (decod['message'] as String?) ??
+            response.body,
+        'tipo': decod['tipo'] as String?,
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'No se pudo conectar: $e'};
     }
   }
 
@@ -920,21 +973,65 @@ class ApiService {
     double monto,
     String metodoPago,
   ) async {
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/tesoreria/cuentas-pagar/abonar'),
-          headers: _headers,
-          body: jsonEncode({
-            'cxp_id': cxpId,
-            'monto': monto,
-            'metodo_pago': metodoPago,
-          }),
-        )
-        .timeout(const Duration(seconds: 12));
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      return {'success': true, ...jsonDecode(response.body)};
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/tesoreria/cuentas-pagar/abonar'),
+            headers: _headers,
+            body: jsonEncode({
+              'cxpId': cxpId,
+              'monto': monto,
+              'metodoPago': metodoPago,
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+      final decod = _decodificarError(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...decod};
+      }
+      return {
+        'success': false,
+        'error': (decod['error'] as String?) ?? 'Error al abonar la cuenta',
+        if (decod['tipo'] != null) 'tipo': decod['tipo'],
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'No se pudo conectar: $e'};
     }
-    return {'success': false, 'error': response.body};
+  }
+
+  /// Fondo de maniobra: inyecta dinero a la caja del turno activo.
+  /// Requiere rol SUPERVISOR/ADMIN o PIN de supervisor (bcrypt en backend).
+  static Future<Map<String, dynamic>> ingresarFondoCaja({
+    required double monto,
+    String metodoPago = 'Efectivo',
+    String observacion = '',
+    String? pinSupervisor,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/caja/ingreso'),
+            headers: _headers,
+            body: jsonEncode({
+              'monto': monto,
+              'metodoPago': metodoPago,
+              'observacion': observacion,
+              'pinSupervisor': ?pinSupervisor,
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+      final decod = _decodificarError(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...decod};
+      }
+      return {
+        'success': false,
+        'error': (decod['error'] as String?) ?? 'Error al registrar el ingreso',
+        if (decod['tipo'] != null) 'tipo': decod['tipo'],
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'No se pudo conectar: $e'};
+    }
   }
 // ═══════════════════════════════════════════════════════════════════════════
   // APERTURA / CIERRE DE CAJA (arqueo por turno)

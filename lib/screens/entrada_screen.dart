@@ -159,10 +159,10 @@ Future<void> _cargarProductos() async {
     };
 
     try {
-      final success = await ApiService.registrarEntradaMercancia(data);
+      final res = await ApiService.registrarEntradaMercancia(data);
 
       if (mounted) {
-        if (success) {
+        if (res['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Entrada de mercancía registrada exitosamente'),
@@ -173,9 +173,17 @@ Future<void> _cargarProductos() async {
           setState(() => _productoSeleccionado = null);
           _cargarProductos();
         } else {
+          // Error accionable: si no hay fondos en caja (SALDO_INSUFICIENTE),
+          // el backend ya devuelve la guía (Crédito o Ingreso de Caja).
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Error al procesar la entrada de mercancía'),
+            SnackBar(
+              content: Text(
+                res['error']?.toString() ??
+                    'Error al procesar la entrada de mercancía',
+              ),
+              backgroundColor: res['tipo'] != null
+                  ? Theme.of(context).colorScheme.error
+                  : null,
             ),
           );
         }

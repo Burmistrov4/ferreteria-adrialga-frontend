@@ -166,6 +166,25 @@ class _PosScreenState extends State<PosScreen> {
     });
   }
 
+  /// Elimina un ítem del carrito (botón papelera, X o Dismissible).
+  void _eliminarDelCarrito(CartItem item) {
+    setState(() {
+      final idx = _carrito.indexOf(item);
+      _carrito.remove(item);
+      // Sincronizar foco activo y FocusNodes para que F3/index sigan válidos.
+      if (idx >= 0 && idx < _focosCantidad.length) {
+        _focosCantidad.removeAt(idx).dispose();
+      }
+      if (_indiceActivo != null) {
+        if (_carrito.isEmpty) {
+          _indiceActivo = null;
+        } else if (_indiceActivo! >= _carrito.length) {
+          _indiceActivo = _carrito.length - 1;
+        }
+      }
+    });
+  }
+
   Future<void> _seleccionarCliente() async {
     final cliente = await showDialog<ClienteModel>(
       context: context,
@@ -417,6 +436,7 @@ class _PosScreenState extends State<PosScreen> {
           activa: _indiceActivo == index,
           onActivar: () => setState(() => _indiceActivo = index),
           onQuantityChanged: (qty) => _actualizarCantidadManual(item, qty),
+          onEliminar: () => _eliminarDelCarrito(item),
         );
       },
     );
@@ -668,6 +688,7 @@ class _PosScreenState extends State<PosScreen> {
 class _CartItemTile extends StatefulWidget {
   final CartItem item;
   final ValueChanged<int> onQuantityChanged;
+  final VoidCallback onEliminar;
   final FocusNode quantityFocus;
   final bool activa;
   final VoidCallback onActivar;
@@ -676,6 +697,7 @@ class _CartItemTile extends StatefulWidget {
     super.key,
     required this.item,
     required this.quantityFocus,
+    required this.onEliminar,
     this.activa = false,
     required this.onActivar,
     required this.onQuantityChanged,
@@ -732,7 +754,9 @@ class _CartItemTileState extends State<_CartItemTile> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Card(
+    // Deslizar hacia la derecha elimina el ítem del carrito (gesto intuitivo).
+    // El fondo rojo con papelera aparece durante el gesto.
+    final tarjeta = Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       color: widget.activa
           ? cs.primaryContainer.withValues(alpha: 0.35)
@@ -776,18 +800,31 @@ class _CartItemTileState extends State<_CartItemTile> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // En cantidad 1, el botón − se transforma en papelera para
+                  // eliminar el producto de forma explícita.
                   IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, size: 24),
-                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                    // No bajar de 1 con el botón (evita borrados accidentales).
+                    icon: Icon(
+                      widget.item.cantidad <= 1
+                          ? Icons.delete_outline
+                          : Icons.remove_circle_outline,
+                      size: 22,
+                      color: widget.item.cantidad <= 1
+                          ? cs.error
+                          : null,
+                    ),
+                    iconSize: 22,
+                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                    tooltip: widget.item.cantidad <= 1
+                        ? 'Eliminar del carrito'
+                        : 'Disminuir cantidad',
                     onPressed: widget.item.cantidad <= 1
-                        ? null
+                        ? widget.onEliminar
                         : () =>
                             widget.onQuantityChanged(widget.item.cantidad - 1),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
                   SizedBox(
-                    width: 46,
+                    width: 44,
                     height: 32,
                     child: TextField(
                       controller: _controller,
@@ -815,12 +852,23 @@ class _CartItemTileState extends State<_CartItemTile> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
                   IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 24),
-                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    icon: const Icon(Icons.add_circle_outline, size: 22),
+                    iconSize: 22,
+                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                    tooltip: 'Aumentar cantidad',
                     onPressed: () =>
                         widget.onQuantityChanged(widget.item.cantidad + 1),
+                  ),
+                  const SizedBox(width: 2),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    iconSize: 18,
+                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    color: cs.onSurfaceVariant,
+                    tooltip: 'Quitar producto',
+                    onPressed: widget.onEliminar,
                   ),
                 ],
               ),
@@ -828,6 +876,22 @@ class _CartItemTileState extends State<_CartItemTile> {
           ),
         ),
       ),
+    );
+
+    return Dismissible(
+      key: ValueKey('dismiss-${widget.item.producto.productoId}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: cs.errorContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(Icons.delete_outline, color: cs.onErrorContainer),
+      ),
+      onDismissed: (_) => widget.onEliminar(),
+      child: tarjeta,
     );
   }
 }

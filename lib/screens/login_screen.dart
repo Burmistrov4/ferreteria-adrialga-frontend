@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
-import 'dashboard_screen.dart';
+import '../widgets/app_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -44,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (success) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
+        MaterialPageRoute(builder: (context) => const AppShell()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -64,9 +64,12 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
-          child: SizedBox(
-            width: 380,
-            child: Card(
+            // Tarjeta elástica: en pantallas anchas se limita a 380dp para
+            // no estirarse; en teléfonos estrechos ocupa el ancho disponible
+            // (equivalente a un max-width en flexbox).
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Card(
               elevation: 4,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),

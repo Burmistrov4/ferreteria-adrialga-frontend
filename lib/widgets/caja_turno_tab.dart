@@ -150,31 +150,142 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
   /// explicita de la Tasa BCV del dia antes de habilitar el boton "Abrir".
   /// El `StatefulBuilder`/estado local evita redibujar la vista de caja completa.
 
+  /// Diálogo de fondo de maniobra: monto + PIN de supervisor (si el usuario
+  /// activo no es SUPERVISOR/ADMIN). Delega el ingreso al backend.
+  Future<void> _mostrarDialogoIngreso() async {
+    final montoCtrl = TextEditingController();
+    final pinCtrl = TextEditingController();
+    final esSupervisor = ApiService.esSupervisor;
+    var enviando = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Ingreso de Caja (Fondo de Maniobra)'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Inyecta efectivo al turno para dar vuelto o cubrir '
+                  'compras a contado. Queda registrado en el arqueo.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: montoCtrl,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Monto (USD)',
+                    prefixText: '\$ ',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                if (!esSupervisor) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: pinCtrl,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'PIN de Supervisor',
+                      hintText: 'Requerido para autorizar el ingreso',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: enviando
+                  ? null
+                  : () async {
+                      final monto =
+                          double.tryParse(montoCtrl.text.trim()) ?? 0;
+                      if (monto <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Ingrese un monto mayor a \$0'),
+                          ),
+                        );
+                        return;
+                      }
+                      setDialog(() => enviando = true);
+                      final res = await ApiService.ingresarFondoCaja(
+                        monto: monto,
+                        pinSupervisor: !esSupervisor ? pinCtrl.text : null,
+                      );
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (res['success'] == true) {
+                        await _cargar();
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              res['error']?.toString() ??
+                                  'No se pudo registrar el ingreso',
+                            ),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                          ),
+                        );
+                      }
+                    },
+              icon: enviando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.savings),
+              label: const Text('Registrar ingreso'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _mostrarDialogoCerrar() {
     _montoContadoCtrl.text = _saldo.toStringAsFixed(2);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Cerrar caja (arqueo)'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _montoContadoCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Monto contado en caja (USD)',
-                prefixText: '\$ ',
-                helperText: 'Debe coincidir con el saldo (+-${_tolerancia.toStringAsFixed(2)})',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _montoContadoCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Monto contado en caja (USD)',
+                  prefixText: '\$ ',
+                  helperText: 'Debe coincidir con el saldo (+-${_tolerancia.toStringAsFixed(2)})',
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _obsCtrl,
-              decoration: const InputDecoration(labelText: 'Observacion (opcional)'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _obsCtrl,
+                decoration: const InputDecoration(labelText: 'Observacion (opcional)'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -246,14 +357,21 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Saldo Disponible', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
-                          const SizedBox(height: 4),
-                          Text('\$${_saldo.toStringAsFixed(2)}', style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold)),
-                        ],
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Saldo Disponible', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+                            const SizedBox(height: 4),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text('\$${_saldo.toStringAsFixed(2)}', style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -267,7 +385,15 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (cajaActiva)
+                  if (cajaActiva) ...[
+                    // Fondo de maniobra: inyectar efectivo (dar vuelto, cubrir
+                    // compras de contado) con autorización de supervisor.
+                    OutlinedButton.icon(
+                      onPressed: _trabajando ? null : _mostrarDialogoIngreso,
+                      icon: const Icon(Icons.savings),
+                      label: const Text('Ingreso de Caja (fondo)'),
+                    ),
+                    const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _trabajando ? null : () => _mostrarDialogoCerrar(),
                       icon: _trabajando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.lock),
@@ -276,7 +402,8 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                         foregroundColor: cs.error,
                         side: BorderSide(color: cs.error),
                       ),
-                    )
+                    ),
+                  ]
                   else
                     FilledButton.icon(
                       onPressed: _trabajando ? null : () => _mostrarDialogoAbrir(),

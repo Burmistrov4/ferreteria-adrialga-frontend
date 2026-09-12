@@ -39,7 +39,7 @@ class _FinanzasScreenState extends State<FinanzasScreen>
           onPressed: () => Navigator.pop(context),
           tooltip: 'Regresar',
         ),
-        title: const Text('8. Finanzas & Caja'),
+        title: const Text('Finanzas & Caja'),
       ),
       body: Column(
         children: [
@@ -47,6 +47,8 @@ class _FinanzasScreenState extends State<FinanzasScreen>
             color: cs.surfaceContainerLow,
             child: TabBar(
               controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               labelColor: cs.primary,
               unselectedLabelColor: cs.onSurfaceVariant,
               indicatorColor: cs.primary,
@@ -178,12 +180,151 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
     }
   }
 
+  /// Abre el modal "Abonar a Deuda": monto + método de pago. Valida que el
+  /// monto no exceda el saldo y delega el update al backend, recargando la
+  /// lista al confirmar. Si no hay caja abierta o el PIN falla, lo reporta.
+  Future<void> _abrirAbono(int cxpId, double saldo) async {
+    final montoCtrl = TextEditingController(text: saldo.toStringAsFixed(2));
+    String metodoPago = 'Efectivo';
+    bool abonando = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Abonar a Deuda'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Saldo pendiente: \$${saldo.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: montoCtrl,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Monto a abonar (\$)',
+                    prefixText: '\$ ',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: metodoPago,
+                  decoration: const InputDecoration(
+                    labelText: 'Método de Pago',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Efectivo', child: Text('Efectivo')),
+                    DropdownMenuItem(value: 'Pago Móvil', child: Text('Pago Móvil')),
+                    DropdownMenuItem(value: 'Punto de Venta', child: Text('Punto de Venta')),
+                    DropdownMenuItem(value: 'Transferencia', child: Text('Transferencia')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setDialog(() => metodoPago = v);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: abonando
+                  ? null
+                  : () async {
+                      final monto = double.tryParse(montoCtrl.text.trim()) ?? 0;
+                      if (monto <= 0 || monto > saldo + 0.01) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              monto <= 0
+                                  ? 'Ingrese un monto mayor a \$0'
+                                  : 'El abono no puede exceder el saldo pendiente',
+                            ),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                          ),
+                        );
+                        return;
+                      }
+                      setDialog(() => abonando = true);
+                      final res = await ApiService.abonarCuentaPorPagar(
+                        cxpId,
+                        monto,
+                        metodoPago,
+                      );
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (res['success'] == true) {
+                        _cargarCuentas();
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Abono registrado')),
+                        );
+                      } else {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              res['error']?.toString() ??
+                                  'No se pudo registrar el abono',
+                            ),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                          ),
+                        );
+                      }
+                    },
+              child: abonando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Abonar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (_cargando) return const Center(child: CircularProgressIndicator());
     if (_cuentas == null) return const Center(child: Text('Error al cargar cuentas'));
-    if (_cuentas!.isEmpty) return Center(child: Text('No hay cuentas por pagar', style: TextStyle(color: cs.onSurfaceVariant)));
+    if (_cuentas!.isEmpty) {
+      // Estado vacío amigable (mandato UX: la app se explica sola).
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_outline, size: 56, color: cs.tertiary),
+            const SizedBox(height: 12),
+            Text(
+              'No hay deudas pendientes',
+              style: TextStyle(fontSize: 16, color: cs.onSurface),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Las compras a crédito aparecerán aquí.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+    }
     return RefreshIndicator(
       onRefresh: _cargarCuentas,
       child: ListView.builder(
@@ -193,23 +334,106 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
           final cxp = _cuentas![index];
           final saldo = _numD(cxp['Saldo']);
           final total = _numD(cxp['Monto_Total']);
+          final pagado = _numD(cxp['Monto_Pagado']);
           final estatus = cxp['Estatus'] ?? 'Pendiente';
           final prov = cxp['proveedores'] as Map<String, dynamic>?;
+          final cxpId = _numD(cxp['CxP_ID']).toInt();
           return Card(
             color: cs.surfaceContainerLow,
             margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: estatus == 'Pendiente' ? cs.secondary.withValues(alpha: 0.2) : cs.tertiary.withValues(alpha: 0.2),
-                child: Icon(estatus == 'Pendiente' ? Icons.pending : Icons.check, color: estatus == 'Pendiente' ? cs.secondary : cs.tertiary),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: estatus == 'Pendiente'
+                            ? cs.secondary.withValues(alpha: 0.2)
+                            : cs.tertiary.withValues(alpha: 0.2),
+                        child: Icon(
+                          estatus == 'Pendiente' ? Icons.pending : Icons.check,
+                          color: estatus == 'Pendiente'
+                              ? cs.secondary
+                              : cs.tertiary,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              prov?['Razon_Social'] ?? 'Proveedor',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              'CxP #${cxp['CxP_ID']?.toString() ?? ''}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: estatus == 'Pagada'
+                            ? null
+                            : () => _abrirAbono(cxpId, saldo),
+                        icon: const Icon(Icons.payments, size: 16),
+                        label: const Text('Abonar'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 4,
+                    children: [
+                      _chipCxp('Total', '\$${total.toStringAsFixed(2)}', cs),
+                      _chipCxp('Pagado', '\$${pagado.toStringAsFixed(2)}', cs),
+                      _chipCxp(
+                        'Saldo',
+                        '\$${saldo.toStringAsFixed(2)}',
+                        cs,
+                        destacar: true,
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              title: Text('CxP #${cxp['CxP_ID']?.toString() ?? ''} - ${prov?['Razon_Social'] ?? 'Proveedor'}', style: TextStyle(color: cs.onSurface)),
-              subtitle: Text('Total: \$${total.toStringAsFixed(2)} - Estatus: $estatus', style: TextStyle(color: cs.onSurfaceVariant)),
-              trailing: Text('\$${saldo.toStringAsFixed(2)}', style: TextStyle(color: cs.error, fontWeight: FontWeight.bold, fontSize: 16)),
             ),
           );
         },
       ),
+    );
+  }
+
+  Widget _chipCxp(String etiqueta, String valor, ColorScheme cs,
+      {bool destacar = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$etiqueta: ',
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        Text(
+          valor,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: destacar ? cs.error : cs.onSurface,
+          ),
+        ),
+      ],
     );
   }
 }

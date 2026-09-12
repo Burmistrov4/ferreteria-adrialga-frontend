@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
 
@@ -43,52 +44,100 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
     }
   }
 
-  Future<void> _crearProveedor() async {
-    final rifCtrl = TextEditingController();
-    final razonCtrl = TextEditingController();
-    final telCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final direccionCtrl = TextEditingController();
+  Future<void> _crearProveedor() => _mostrarDialogoProveedor();
+
+  Future<void> _editarProveedor(Map<String, dynamic> prov) =>
+      _mostrarDialogoProveedor(proveedor: prov);
+
+  Future<void> _mostrarDialogoProveedor({Map<String, dynamic>? proveedor}) async {
+    final editando = proveedor != null;
+    final rifCtrl = TextEditingController(
+        text: proveedor?['RIF_Cedula']?.toString() ?? '');
+    final razonCtrl = TextEditingController(
+        text: proveedor?['Razon_Social']?.toString() ?? '');
+    final telCtrl = TextEditingController(
+        text: proveedor?['Telefono']?.toString() ?? '');
+    final emailCtrl = TextEditingController(
+        text: proveedor?['Email']?.toString() ?? '');
+    final direccionCtrl = TextEditingController(
+        text: proveedor?['Direccion']?.toString() ?? '');
+    final formKey = GlobalKey<FormState>();
 
     final okGuardar = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('Nuevo Proveedor'),
-        content: SizedBox(
-          width: 480,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: rifCtrl,
-                  decoration: const InputDecoration(labelText: 'RIF *'),
-                ),
-                TextField(
-                  controller: razonCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Razón Social *',
+        title: Text(editando ? 'Editar Proveedor' : 'Nuevo Proveedor'),
+        // Diálogo elástico (responsive): en móvil ocupa hasta el 90% del
+        // ancho; en escritorio se limita a 480. Con SingleChildScrollView
+        // para que el teclado/espacio vertical nunca desborde.
+        content: LayoutBuilder(
+          builder: (context, constraints) {
+            final ancho = constraints.maxWidth.isFinite &&
+                    constraints.maxWidth < 480
+                ? constraints.maxWidth
+                : 480.0;
+            return SizedBox(
+              width: ancho,
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: rifCtrl,
+                        // El RIF es inmutable: es la clave fiscal del proveedor.
+                        enabled: !editando,
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[VEJPGRvejpg\-0-9]'),
+                          ),
+                          TextInputFormatter.withFunction((oldValue, newValue) =>
+                              newValue.copyWith(
+                                  text: newValue.text.toUpperCase())),
+                        ],
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        validator: _validarRif,
+                        decoration: const InputDecoration(
+                          labelText: 'RIF *',
+                          hintText: 'J-12345678-9',
+                        ),
+                      ),
+                      TextFormField(
+                        controller: razonCtrl,
+                        textCapitalization: TextCapitalization.characters,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'La Razón Social es obligatoria'
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Razón Social *',
+                        ),
+                      ),
+                      TextFormField(
+                        controller: telCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(labelText: 'Teléfono'),
+                      ),
+                      TextFormField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Correo Electrónico',
+                        ),
+                      ),
+                      TextFormField(
+                        controller: direccionCtrl,
+                        decoration: const InputDecoration(labelText: 'Dirección'),
+                      ),
+                    ],
                   ),
                 ),
-                TextField(
-                  controller: telCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Teléfono'),
-                ),
-                TextField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo Electrónico',
-                  ),
-                ),
-                TextField(
-                  controller: direccionCtrl,
-                  decoration: const InputDecoration(labelText: 'Dirección'),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
         actions: [
           TextButton(
@@ -96,7 +145,11 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) {
+                Navigator.pop(context, true);
+              }
+            },
             child: const Text('Guardar'),
           ),
         ],
@@ -104,47 +157,128 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
     );
 
     if (okGuardar == true) {
-      if (rifCtrl.text.trim().isEmpty || razonCtrl.text.trim().isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('RIF y Razón Social son obligatorios'),
-            ),
-          );
-        }
-        return;
-      }
-      final res = await ApiService.createProveedor({
-        'RIF_Cedula': rifCtrl.text.trim(),
-        'Razon_Social': razonCtrl.text.trim(),
-        'Telefono': telCtrl.text.trim().isEmpty ? null : telCtrl.text.trim(),
-        'Email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-        'Direccion': direccionCtrl.text.trim().isEmpty
-            ? null
-            : direccionCtrl.text.trim(),
-      });
+      final res = editando
+          ? await ApiService.updateProveedor(
+              (proveedor['Proveedor_ID'] as num).toInt(),
+              {
+                'Razon_Social': razonCtrl.text.trim(),
+                'Telefono':
+                    telCtrl.text.trim().isEmpty ? null : telCtrl.text.trim(),
+                'Email': emailCtrl.text.trim().isEmpty
+                    ? null
+                    : emailCtrl.text.trim(),
+                'Direccion': direccionCtrl.text.trim().isEmpty
+                    ? null
+                    : direccionCtrl.text.trim(),
+              },
+            )
+          : await ApiService.createProveedor({
+              'RIF_Cedula': rifCtrl.text.trim(),
+              'Razon_Social': razonCtrl.text.trim(),
+              'Telefono':
+                  telCtrl.text.trim().isEmpty ? null : telCtrl.text.trim(),
+              'Email':
+                  emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+              'Direccion': direccionCtrl.text.trim().isEmpty
+                  ? null
+                  : direccionCtrl.text.trim(),
+            });
       if (mounted) {
         if (res['success'] == true) {
           _cargarProveedores();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Proveedor creado exitosamente')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(editando
+                    ? 'Proveedor actualizado'
+                    : 'Proveedor creado exitosamente'),
+              ),
+            );
+          }
         } else {
           final cs = Theme.of(context).colorScheme;
           final detalle = res['error']?.toString().trim() ?? '';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                detalle.isEmpty
-                    ? 'Error al crear proveedor'
-                    : 'Error al crear proveedor: $detalle',
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  detalle.isEmpty
+                      ? 'Error al guardar proveedor'
+                      : 'Error al guardar proveedor: $detalle',
+                ),
+                backgroundColor: cs.error,
               ),
-              backgroundColor: cs.error,
-            ),
-          );
+            );
+          }
         }
       }
     }
+    // Saneamiento: libero los controladores tras el diálogo para no acumular
+    // listeners (bloqueo del hilo) al abrir/cerrar repetidamente.
+    rifCtrl.dispose();
+    razonCtrl.dispose();
+    telCtrl.dispose();
+    emailCtrl.dispose();
+    direccionCtrl.dispose();
+  }
+
+  /// Elimina un proveedor con confirmación explícita. El backend rechaza la
+  /// operación (409) si tiene compras o cuentas por pagar pendientes.
+  Future<void> _confirmarEliminar(Map<String, dynamic> prov) async {
+    final razon = prov['Razon_Social']?.toString() ?? 'este proveedor';
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar proveedor'),
+        content: Text(
+          '¿Eliminar a "$razon"? Solo es posible si no tiene compras ni deudas pendientes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true) return;
+    final res = await ApiService.deleteProveedor(
+        (prov['Proveedor_ID'] as num).toInt());
+    if (!mounted) return;
+    if (res['success'] == true) {
+      _cargarProveedores();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Proveedor eliminado')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res['error']?.toString() ?? 'No se pudo eliminar'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+  }
+
+  /// Validación fiscal de RIF de proveedor `^([VEJPG]-)?\d{7,9}$`:
+  /// prefijo V/E/J/G/P opcional + 7 a 9 dígitos.
+  String? _validarRif(String? valor) {
+    final v = (valor ?? '').trim().toUpperCase();
+    if (v.isEmpty) return 'El RIF es obligatorio';
+    final body = v.startsWith(RegExp(r'[VEJPG]-'))
+        ? v.substring(2)
+        : v.replaceAll('-', '');
+    if (body.length < 7 || body.length > 9 || !RegExp(r'^\d+$').hasMatch(body)) {
+      return 'RIF inválido: use prefijo (V/E/J/G) y 7 a 9 dígitos';
+    }
+    return null;
   }
 
   @override
@@ -207,6 +341,25 @@ class _ProveedoresScreenState extends State<ProveedoresScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Text('RIF: $rif | Tel: $telefono'),
+                      trailing: Wrap(
+                        spacing: 0,
+                        children: [
+                          IconButton(
+                            constraints: const BoxConstraints(
+                                minWidth: 48, minHeight: 48),
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Editar',
+                            onPressed: () => _editarProveedor(prov),
+                          ),
+                          IconButton(
+                            constraints: const BoxConstraints(
+                                minWidth: 48, minHeight: 48),
+                            icon: Icon(Icons.delete_outline, color: cs.error),
+                            tooltip: 'Eliminar',
+                            onPressed: () => _confirmarEliminar(prov),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },

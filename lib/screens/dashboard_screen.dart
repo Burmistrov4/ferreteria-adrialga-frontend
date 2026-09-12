@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'pos_screen.dart';
@@ -163,7 +163,24 @@ class _MetricaCard extends StatelessWidget {
 }
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  /// Cuando el Dashboard vive dentro del AppShell, el tap en una tarjeta de
+  /// módulo cambia de pestaña en el shell (transición fluida con estado
+  /// preservado). Si es null (uso aislado), se hace push de la pantalla.
+  final ValueChanged<int>? onNavegarModulo;
+
+  const DashboardScreen({super.key, this.onNavegarModulo});
+
+  /// Índice de la pestaña del AppShell que corresponde a cada módulo.
+  static const _indiceShellDeModulo = <int, int>{
+    1: 1, // Ventas / POS
+    2: 2, // Facturas
+    3: 3, // Clientes
+    4: 4, // Productos
+    5: 5, // Entradas (Compras)
+    6: 6, // Proveedores
+    8: 7, // Finanzas & Caja
+    9: 8, // Configuración (Ajustes)
+  };
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -205,6 +222,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _abrirModulo(_ModuloSistema m) {
     if (m.numero == 7) {
       _irAMetricas();
+    } else if (widget.onNavegarModulo != null &&
+        DashboardScreen._indiceShellDeModulo.containsKey(m.numero)) {
+      // Navegación fluida dentro del AppShell: cambio de pestaña sin push.
+      widget.onNavegarModulo!(DashboardScreen._indiceShellDeModulo[m.numero]!);
     } else if (m.pantalla != null) {
       _navegar(m.pantalla!);
     }
@@ -346,7 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Panel Principal - Adrialga'),
+        title: const Text('Panel de Control'),
         actions: [
           Center(
             child: Container(
@@ -401,7 +422,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      drawer: _buildDrawer(),
       body: RefreshIndicator(
         onRefresh: () async {
           await Future.wait([_cargarMetricas(), _cargarSerie()]);
@@ -605,9 +625,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // financiera ya cargada (cero llamadas extra al backend).
 
   /// Genera la lista de insights del período activo, ordenada por prioridad.
-  List<({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion})>
+  List<({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion, String? accionTexto})>
       _generarInsights() {
-    final insights = <({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion})>[];
+    final insights = <({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion, String? accionTexto})>[];
     final s = _serie;
     if (s == null) return insights;
 
@@ -628,7 +648,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Margen bajo (${pctMargen.toStringAsFixed(1)}%)',
           mensaje:
               'Ganancia de \$${_moneda(margenUsd)} sobre \$${_moneda(ventas['montoTotal'])} en ventas. Revisa precios de costo y márgenes por producto antes de reponer inventario.',
-          accion: () => _navegar(InventarioScreen()),
+          accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
         ));
       } else if (pctMargen >= 30) {
         insights.add((
@@ -637,7 +657,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Excelente margen (${pctMargen.toStringAsFixed(1)}%)',
           mensaje:
               'La rentabilidad del período supera el 30%. Momento ideal para negociar volumen con proveedores o invertir en stock de alta rotación.',
-          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)),
+          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)), accionTexto: 'Ver facturas',
         ));
       } else {
         insights.add((
@@ -646,7 +666,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Margen saludable (${pctMargen.toStringAsFixed(1)}%)',
           mensaje:
               'Ganancia de \$${_moneda(margenUsd)} en el período. Un empuje del 5% en el ticket promedio sumaría \$${_moneda(margenUsd * 0.05 / (pctMargen / 100))} adicionales.',
-          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)),
+          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)), accionTexto: 'Ver facturas',
         ));
       }
     }
@@ -664,7 +684,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             titulo: 'Ventas cayendo (${variacion.toStringAsFixed(0)}%)',
             mensaje:
                 'El último tramo cerró en Bs. ${_moneda(actual)} vs Bs. ${_moneda(previo)} del anterior. Considera promociones o verificar disponibilidad de los productos más vendidos.',
-            accion: () => _navegar(InventarioScreen()),
+            accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
           ));
         } else if (variacion >= 15) {
           insights.add((
@@ -673,7 +693,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             titulo: 'Ventas al alza (+${variacion.toStringAsFixed(0)}%)',
             mensaje:
                 'Bs. ${_moneda(actual)} en el último tramo (+${variacion.toStringAsFixed(0)}%). Asegura stock del Top 5 para no perder la racha.',
-            accion: () => _navegar(InventarioScreen()),
+            accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
           ));
         }
       }
@@ -692,7 +712,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Mejor momento: ${mejor['etiqueta']}',
           mensaje:
               'Concentró Bs. ${_moneda(mejor['montoBs'])}. Prioriza cajero y reposición de mercancía en esa franja.',
-          accion: null,
+          accion: null, accionTexto: null,
         ));
       }
     }
@@ -707,7 +727,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: '$conteoAlertas producto(s) en stock mínimo',
         mensaje:
             '"${primero['Nombre']}" está al límite. Genera la nota de entrada antes de que la venta lo agote.',
-        accion: () => _navegar(InventarioScreen()),
+        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
       ));
     }
 
@@ -724,7 +744,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             titulo: '${dominante['metodo']}: ${pct.toStringAsFixed(0)}% de los cobros',
             mensaje:
                 'Fuerte concentración en un solo método. Verifica que el flujo de caja físico cubra los egresos en efectivo del día.',
-            accion: () => _navegar(FinanzasScreen()),
+            accion: () => _navegar(FinanzasScreen()), accionTexto: 'Ver caja',
           ));
         }
       }
@@ -751,7 +771,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Inventario muerto: ${muerto.length} producto(s)',
         mensaje:
             '\$${_moneda(valMuerto)} estancados sin ventas en 30 días. Ej: "${p1['nombre']}" (${p1['stock']} uds). Promociona o descuenta por lote.',
-        accion: () => _navegar(InventarioScreen()),
+        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
       ));
     }
 
@@ -766,7 +786,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Margen ${perdida ? 'a pérdida' : 'bajo'} · ${p['nombre']}',
         mensaje:
             '${pct.toStringAsFixed(1)}% (precio \$${_moneda(p['precioDolar'])} vs costo \$${_moneda(p['costoDolar'])}). Reevalúa costo de compra o precio.',
-        accion: () => _navegar(InventarioScreen()),
+        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
       ));
     }
 
@@ -778,8 +798,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Alta rotación · ${t['nombre']}',
         mensaje:
             'Índice ${t['indice']} (${t['unidades']} uds en 30 días vs ${t['stock']} en stock). Garantiza reposición.',
-        accion: () => _navegar(InventarioScreen()),
+        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
       ));
+    }
+
+    // 7) Predicción de quiebre de stock: días restantes estimados a partir
+    //    del ritmo de venta de los últimos 30 días (rotación del asistente).
+    for (final p in mayor.take(5)) {
+      final stock = _parseNum(p['stock']);
+      final vendidas = _parseNum(p['unidades']);
+      if (vendidas <= 0) continue;
+      final dias = (stock / (vendidas / 30.0)).floor();
+      if (dias <= 7) {
+        insights.add((
+          icon: Icons.hourglass_bottom_rounded,
+          color: dias <= 3
+              ? Theme.of(context).colorScheme.error
+              : Colors.orange,
+          titulo: '${p['nombre']}: se agota en ~$dias día(s)',
+          mensaje:
+              'Quedan ${stock.toStringAsFixed(0)} uds y el ritmo de venta es de ${vendidas.toStringAsFixed(0)} uds cada 30 días. Haz la compra hoy para no perder ventas.',
+          accion: () => _navegar(EntradasScreen(
+              productoInicialId: (p['id'] as num?)?.toInt())),
+          accionTexto: 'Registrar compra',
+        ));
+      }
     }
 
     return insights;
@@ -840,6 +883,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                              // Acción Rápida: botón etiquetado dentro de la
+                              // alerta (CIERRE DE CICLO: ver → decidir → actuar).
+                              if (i.accion != null && i.accionTexto != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                          minHeight: 48),
+                                      child: FilledButton.tonalIcon(
+                                        onPressed: i.accion,
+                                        icon: Icon(i.icon, size: 16),
+                                        label: Text(
+                                          i.accionTexto!,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -1129,14 +1193,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: top.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      'Sin productos vendidos en el periodo seleccionado.',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                ? _estadoVacio(
+                    icono: Icons.emoji_events_outlined,
+                    titulo: 'Aún no hay ventas registradas',
+                    mensaje:
+                        'Cuando realices tu primera venta, aquí aparecerán tus productos estrella.',
                   )
                 : Column(
                     children: [
@@ -1259,14 +1320,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: caja.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      'Sin pagos registrados hoy.',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                ? _estadoVacio(
+                    icono: Icons.point_of_sale_outlined,
+                    titulo: 'Sin ventas de hoy todavía',
+                    mensaje:
+                        'Abre una venta desde “Vender” y los cobros aparecerán aquí separados por método de pago.',
+                    accionTexto: 'Vender ahora',
+                    onAccion: () => widget.onNavegarModulo != null
+                        ? widget.onNavegarModulo!(1)
+                        : _navegar(PosScreen()),
                   )
                 : Column(
                     children: caja
@@ -1382,6 +1444,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  /// Empty State ilustrado y accionable: icono grande tenue, título
+  /// amigable, mensaje orientativo y CTA opcional (área táctil ≥ 48 dp).
+  Widget _estadoVacio({
+    required IconData icono,
+    required String titulo,
+    required String mensaje,
+    String? accionTexto,
+    VoidCallback? onAccion,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 44, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+          const SizedBox(height: 10),
+          Text(
+            titulo,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            mensaje,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          if (accionTexto != null && onAccion != null) ...[
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: FilledButton.tonalIcon(
+                onPressed: onAccion,
+                icon: Icon(icono, size: 18),
+                label: Text(accionTexto),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1569,88 +1679,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 2;
   }
 
-  Widget _buildDrawer() {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.blueAccent),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.storefront, color: Colors.white, size: 48),
-                SizedBox(height: 8),
-                Text(
-                  'Adrialga',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text('Flujo operativo del negocio',
-                    style: TextStyle(color: Colors.white70)),
-              ],
-            ),
-          ),
-          // Ítems generados desde la MISMA fuente que el Grid del Dashboard:
-          // números, títulos, iconos y destinos idénticos por construcción.
-          for (final seccion in const ['OPERACIÓN', 'ADMINISTRACIÓN']) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
-                seccion,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  letterSpacing: 1.1,
-                ),
-              ),
-            ),
-            ..._modulosSistema(context)
-                .where((m) => m.seccion == seccion)
-                .map(_drawerItem),
-          ],
-          const Divider(),
-          ListTile(
-            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
-            title: Text(
-              'Cerrar sesión',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            onTap: _cerrarSesion,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _drawerItem(_ModuloSistema m) {
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: m.color.withValues(alpha: 0.15),
-        child: Text(
-          '${m.numero}',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: m.color,
-          ),
-        ),
-      ),
-      title: Text(
-        m.titulo,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      ),
-      onTap: () {
-        Navigator.pop(context); // cierra el drawer
-        _abrirModulo(m);
-      },
-    );
-  }
+// Navegación por pestañas gestionada por el AppShell (Drawer eliminado).
 }
 
 

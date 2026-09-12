@@ -110,7 +110,17 @@ class _ProductoDialogState extends State<ProductoDialog> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
+            onPressed: () {
+              // Cierre de ciclo: no puede crearse una categoría sin nombre.
+              // Se notifica en línea en vez de fallar en silencio.
+              if (nombreCtrl.text.trim().isEmpty) {
+                ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                  const SnackBar(content: Text('Escribe el nombre de la categoría')),
+                );
+                return;
+              }
+              Navigator.pop(dialogCtx, true);
+            },
             child: const Text('Crear'),
           ),
         ],
@@ -148,6 +158,27 @@ class _ProductoDialogState extends State<ProductoDialog> {
     descCtrl.dispose();
   }
 
+  /// Validadores numéricos: bloquean precios <= 0 y cantidades no numéricas
+  /// antes de tocar la API (evita productos creados con datos incoherentes).
+  String? _validarNumero(String? v, {required bool obligatorioPositivo}) {
+    final t = (v ?? '').trim();
+    if (t.isEmpty) return 'Requerido';
+    final n = double.tryParse(t);
+    if (n == null) return 'Ingrese un número válido';
+    if (n < 0) return 'No puede ser negativo';
+    if (obligatorioPositivo && n <= 0) return 'Debe ser mayor a 0';
+    return null;
+  }
+
+  String? _validarEntero(String? v) {
+    final t = (v ?? '').trim();
+    if (t.isEmpty) return 'Requerido';
+    final n = int.tryParse(t);
+    if (n == null) return 'Ingrese un número entero';
+    if (n < 0) return 'No puede ser negativo';
+    return null;
+  }
+
   void _guardar() {
     if (_formKey.currentState!.validate()) {
       final data = {
@@ -174,7 +205,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
           final dosCol = constraints.maxWidth >= 600;
           final cs = Theme.of(context).colorScheme;
           return SingleChildScrollView(
-            child: Form(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Form(
               key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -242,6 +275,10 @@ class _ProductoDialogState extends State<ProductoDialog> {
                             controller: _precioController,
                             keyboardType: const TextInputType
                                 .numberWithOptions(decimal: true),
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: (v) =>
+                                _validarNumero(v, obligatorioPositivo: true),
                             decoration: const InputDecoration(
                               labelText: 'Precio Venta (\$)*',
                             ),
@@ -253,6 +290,10 @@ class _ProductoDialogState extends State<ProductoDialog> {
                             controller: _costoController,
                             keyboardType: const TextInputType
                                 .numberWithOptions(decimal: true),
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: (v) =>
+                                _validarNumero(v, obligatorioPositivo: false),
                             decoration: const InputDecoration(
                               labelText: 'Costo Promedio (\$)',
                             ),
@@ -266,6 +307,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
                           child: TextFormField(
                             controller: _stockActualController,
                             keyboardType: TextInputType.number,
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: _validarEntero,
                             decoration: const InputDecoration(
                               labelText: 'Stock Actual *',
                             ),
@@ -276,6 +320,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
                           child: TextFormField(
                             controller: _stockMinimoController,
                             keyboardType: TextInputType.number,
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: _validarEntero,
                             decoration: const InputDecoration(
                               labelText: 'Stock Mínimo',
                             ),
@@ -288,6 +335,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       controller: _precioController,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: (v) =>
+                          _validarNumero(v, obligatorioPositivo: true),
                       decoration: const InputDecoration(
                         labelText: 'Precio Venta (\$)*',
                       ),
@@ -296,6 +346,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       controller: _costoController,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: (v) =>
+                          _validarNumero(v, obligatorioPositivo: false),
                       decoration: const InputDecoration(
                         labelText: 'Costo Promedio (\$)',
                       ),
@@ -303,6 +356,8 @@ class _ProductoDialogState extends State<ProductoDialog> {
                     TextFormField(
                       controller: _stockActualController,
                       keyboardType: TextInputType.number,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: _validarEntero,
                       decoration: const InputDecoration(
                         labelText: 'Stock Actual *',
                       ),
@@ -310,6 +365,8 @@ class _ProductoDialogState extends State<ProductoDialog> {
                     TextFormField(
                       controller: _stockMinimoController,
                       keyboardType: TextInputType.number,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: _validarEntero,
                       decoration: const InputDecoration(
                         labelText: 'Stock Mínimo',
                       ),
@@ -317,6 +374,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
                   ],
                 ],
               ),
+            ),
             ),
           );
         },

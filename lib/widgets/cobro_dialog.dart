@@ -127,9 +127,13 @@ class _CobroDialogState extends State<CobroDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Modulo de Cobro y Pago',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    'Modulo de Cobro y Pago',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 Chip(
                   avatar: const Icon(Icons.currency_exchange, size: 16),
@@ -296,13 +300,18 @@ class _CobroDialogState extends State<CobroDialog> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    _pagoCompleto ? 'CAMBIO / VUELTO:' : 'FALTA POR PAGAR:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: _pagoCompleto ? verde : rojo,
+                  Flexible(
+                    child: Text(
+                      _pagoCompleto ? 'CAMBIO / VUELTO:' : 'FALTA POR PAGAR:',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _pagoCompleto ? verde : rojo,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
