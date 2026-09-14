@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/factura_model.dart';
+import 'configuracion_service.dart';
 import 'download_service.dart';
 
 /// Genera, imprime y guarda facturas en formato PDF.
@@ -39,6 +40,9 @@ class FacturaPdfService {
     FacturaModel f, {
     required double tasa,
   }) async {
+    // Datos legales de la tienda desde la configuración persistida
+    // (backend /api/configuracion, caché en memoria, fallback offline).
+    final cfg = await ConfiguracionService.obtener();
     final doc = pw.Document();
 
     doc.addPage(
@@ -53,7 +57,7 @@ class FacturaPdfService {
               children: [
                 pw.RichText(
                   text: pw.TextSpan(
-                    text: 'FERRETERÍA ADRIALGA C.A.',
+                    text: cfg.nombre.toUpperCase(),
                     style: pw.TextStyle(
                       fontSize: 18,
                       fontWeight: pw.FontWeight.bold,
@@ -84,7 +88,8 @@ class FacturaPdfService {
             pw.Divider(color: _azul, thickness: 1.2),
             pw.SizedBox(height: 4),
             pw.Text(
-              'RIF: J-12345678-9  •  Dirección: Av. Principal, Local 1',
+              'RIF: ${cfg.rif}  •  Dirección: ${cfg.direccion}'
+              '${cfg.telefono.isNotEmpty ? '  •  Tel: ${cfg.telefono}' : ''}',
               style: const pw.TextStyle(fontSize: 9, color: _gris),
             ),
           ],
@@ -133,6 +138,22 @@ class FacturaPdfService {
                     ),
                   ],
                 ),
+                // Datos fiscales del cliente: dirección/teléfono (requisito
+                // legal el encabezado; vacío en Consumidor Final).
+                if ((f.clienteDireccion ?? '').isNotEmpty ||
+                    (f.clienteTelefono ?? '').isNotEmpty) ...[
+                  pw.SizedBox(height: 4),
+                  if ((f.clienteDireccion ?? '').isNotEmpty)
+                    pw.Text(
+                      'Dirección: ${f.clienteDireccion}',
+                      style: const pw.TextStyle(fontSize: 10, color: _gris),
+                    ),
+                  if ((f.clienteTelefono ?? '').isNotEmpty)
+                    pw.Text(
+                      'Teléfono: ${f.clienteTelefono}',
+                      style: const pw.TextStyle(fontSize: 10, color: _gris),
+                    ),
+                ],
               ],
             ),
           ),

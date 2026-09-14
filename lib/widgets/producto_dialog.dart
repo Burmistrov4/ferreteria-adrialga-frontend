@@ -29,8 +29,14 @@ class _ProductoDialogState extends State<ProductoDialog> {
   late TextEditingController _costoController;
   late TextEditingController _stockActualController;
   late TextEditingController _stockMinimoController;
+  late TextEditingController _margenController;
   late List<CategoriaModel> _categorias;
   int? _selectedCategoriaId;
+
+  /// Bandera anti-recursión: mientras un listener de costo/margen actualiza
+  /// el precio (o viceversa), se evita que el listener del objetivo dispare
+  /// un segundo cálculo (overflow de pila por escritura cíclica).
+  bool _calculando = false;
 
   @override
   void initState() {
@@ -49,7 +55,12 @@ class _ProductoDialogState extends State<ProductoDialog> {
       text: widget.producto?.precioVenta.toString() ?? '0.00',
     );
     _costoController = TextEditingController(
-      text: widget.producto?.costoPromedio.toString() ?? '0.00',
+      text: widget.producto?.costoUltimo.toString() ??
+          widget.producto?.costoPromedio.toString() ??
+          '0.00',
+    );
+    _margenController = TextEditingController(
+      text: widget.producto?.margenGanancia.toString() ?? '0.0',
     );
     _stockActualController = TextEditingController(
       text: widget.producto?.stockActual.toString() ?? '0',
@@ -65,6 +76,49 @@ class _ProductoDialogState extends State<ProductoDialog> {
             : (_categorias.isNotEmpty
                 ? _categorias.first.categoriaId
                 : null);
+
+    // Reactividad precio ⇄ margen: al editar costo o margen se recalcula el
+    // precio sugerido; al editar el precio directo se deriva el margen.
+    _costoController.addListener(_recalcularPrecioDesdeCostoMargen);
+    _margenController.addListener(_recalcularPrecioDesdeCostoMargen);
+    _precioController.addListener(_recalcularMargenDesdePrecio);
+  }
+
+  double get _costo => double.tryParse(_costoController.text.replaceAll(',', '.')) ?? 0;
+  double get _margen => double.tryParse(_margenController.text.replaceAll(',', '.')) ?? 0;
+  double get _precio => double.tryParse(_precioController.text.replaceAll(',', '.')) ?? 0;
+
+  void _setText(TextEditingController c, String t) {
+    c.value = TextEditingValue(
+      text: t,
+      selection: TextSelection.collapsed(offset: t.length),
+    );
+  }
+
+  static String _fmt(double v) => v.toStringAsFixed(2);
+
+  void _recalcularPrecioDesdeCostoMargen() {
+    if (_calculando) return;
+    _calculando = true;
+    try {
+      if (_costo > 0) {
+        _setText(_precioController, _fmt(_costo * (1 + _margen / 100)));
+      }
+    } finally {
+      _calculando = false;
+    }
+  }
+
+  void _recalcularMargenDesdePrecio() {
+    if (_calculando) return;
+    _calculando = true;
+    try {
+      if (_costo > 0 && _precio > 0) {
+        _setText(_margenController, _fmt((_precio / _costo - 1) * 100));
+      }
+    } finally {
+      _calculando = false;
+    }
   }
 
   @override
@@ -74,6 +128,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
     _descripcionController.dispose();
     _precioController.dispose();
     _costoController.dispose();
+    _margenController.dispose();
     _stockActualController.dispose();
     _stockMinimoController.dispose();
     super.dispose();
@@ -147,7 +202,8 @@ class _ProductoDialogState extends State<ProductoDialog> {
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Error al crear la categoría'),
+            content: Text(ApiService.ultimoErrorCategoria ??
+                'Error al crear la categoría'),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -185,8 +241,10 @@ class _ProductoDialogState extends State<ProductoDialog> {
         'SKU_Codigo': _skuController.text.trim(),
         'Nombre': _nombreController.text.trim(),
         'Descripcion': _descripcionController.text.trim(),
-        'Precio_Venta': double.tryParse(_precioController.text) ?? 0.0,
-        'Costo_Promedio': double.tryParse(_costoController.text) ?? 0.0,
+        'Precio_Venta': _precio,
+        'Costo_Promedio': _costo,
+        'Costo_Ultimo': _costo,
+        'Margen_Ganancia': _margen,
         'Stock_Actual': int.tryParse(_stockActualController.text) ?? 0,
         'Stock_Minimo': int.tryParse(_stockMinimoController.text) ?? 5,
         'Categoria_ID': _selectedCategoriaId,
@@ -260,6 +318,8 @@ class _ProductoDialogState extends State<ProductoDialog> {
                         padding: const EdgeInsets.only(top: 6),
                         child: IconButton(
                           tooltip: 'Crear nueva categoría',
+                          constraints: const BoxConstraints(
+                              minWidth: 48, minHeight: 48),
                           onPressed: _crearCategoriaInline,
                           icon: Icon(Icons.add, color: cs.primary),
                         ),
@@ -272,6 +332,37 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       children: [
                         Expanded(
                           child: TextFormField(
+                            controller: _costoController,
+                            keyboardType: const TextInputType
+                                .numberWithOptions(decimal: true),
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: (v) =>
+                                _validarNumero(v, obligatorioPositivo: false),
+                            decoration: const InputDecoration(
+                              labelText: 'Costo de compra (\$)',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _margenController,
+                            keyboardType: const TextInputType
+                                .numberWithOptions(decimal: true),
+                            autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                            validator: (v) =>
+                                _validarNumero(v, obligatorioPositivo: false),
+                            decoration: const InputDecoration(
+                              labelText: 'Margen %',
+                              helperText: 'Sobre el costo',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
                             controller: _precioController,
                             keyboardType: const TextInputType
                                 .numberWithOptions(decimal: true),
@@ -281,21 +372,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
                                 _validarNumero(v, obligatorioPositivo: true),
                             decoration: const InputDecoration(
                               labelText: 'Precio Venta (\$)*',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _costoController,
-                            keyboardType: const TextInputType
-                                .numberWithOptions(decimal: true),
-                            autovalidateMode:
-                                AutovalidateMode.onUserInteraction,
-                            validator: (v) =>
-                                _validarNumero(v, obligatorioPositivo: false),
-                            decoration: const InputDecoration(
-                              labelText: 'Costo Promedio (\$)',
+                              helperText: 'Precio = Costo × (1 + Margen)',
                             ),
                           ),
                         ),
@@ -340,6 +417,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
                           _validarNumero(v, obligatorioPositivo: true),
                       decoration: const InputDecoration(
                         labelText: 'Precio Venta (\$)*',
+                        helperText: 'Precio = Costo × (1 + Margen)',
                       ),
                     ),
                     TextFormField(
@@ -350,7 +428,19 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       validator: (v) =>
                           _validarNumero(v, obligatorioPositivo: false),
                       decoration: const InputDecoration(
-                        labelText: 'Costo Promedio (\$)',
+                        labelText: 'Costo de compra (\$)',
+                      ),
+                    ),
+                    TextFormField(
+                      controller: _margenController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: (v) =>
+                          _validarNumero(v, obligatorioPositivo: false),
+                      decoration: const InputDecoration(
+                        labelText: 'Margen %',
+                        helperText: 'Sobre el costo',
                       ),
                     ),
                     TextFormField(

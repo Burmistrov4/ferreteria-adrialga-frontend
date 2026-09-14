@@ -353,7 +353,59 @@ onChanged: (val) {
                       labelText: 'Costo Unitario Compra (\$)',
                       border: OutlineInputBorder(),
                     ),
+                    onChanged: (_) => setState(() {}),
                   ),
+                  // Precio sugerido al reabastecer: costo ingresado × (1 +
+                  // margen configurado del producto). Informa, no modifica
+                  // hasta guardar el producto en la pestaña correspondiente.
+                  Builder(builder: (context) {
+                    final p = _productoSeleccionado;
+                    if (p == null) return const SizedBox.shrink();
+                    final costo = double.tryParse(
+                            _costoController.text.trim().replaceAll(',', '.')) ??
+                        0;
+                    if (costo <= 0) return const SizedBox.shrink();
+                    final margen = p.margenGanancia;
+                    final sugerido = costo * (1 + margen / 100);
+                    final cambio = (sugerido - p.precioVenta).abs() > 0.005;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            Text(
+                              margen > 0
+                                  ? 'Precio sugerido: \$${sugerido.toStringAsFixed(2)} (margen ${margen.toStringAsFixed(2)}%)'
+                                  : 'Precio sugerido: \$${sugerido.toStringAsFixed(2)} (sin margen configurado)',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            if (cambio)
+                              Text(
+                                'Actual: \$${p.precioVenta.toStringAsFixed(2)}${sugerido > p.precioVenta ? ' ↑' : ' ↓'}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,

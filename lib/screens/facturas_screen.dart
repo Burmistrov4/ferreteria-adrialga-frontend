@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/factura_model.dart';
 import '../services/api_service.dart';
 import '../services/factura_pdf_service.dart';
+import '../services/navigation_service.dart';
 import '../widgets/factura_detalle_dialog.dart';
 
 /// Registro de Facturas: historial de ventas con opción de imprimir en PDF.
@@ -195,7 +196,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Regresar',
-            onPressed: () => Navigator.maybePop(context),
+            // Trapdoor: si hay historial se hace pop; si la pantalla vive
+            // como pestaña del AppShell, se regresa a Inicio.
+            onPressed: () => NavigationService.volverAtras(context),
           ),
           title: const Text('Registro de Facturas'),
           actions: [

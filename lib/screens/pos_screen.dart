@@ -6,6 +6,7 @@ import '../models/factura_model.dart';
 import '../models/producto_model.dart';
 import '../services/api_service.dart';
 import '../services/impresion_service.dart';
+import '../services/session_guard.dart';
 import '../services/shortcut_service.dart';
 import '../widgets/cliente_dialog.dart';
 import '../widgets/cobro_dialog.dart';
@@ -33,7 +34,13 @@ class _PosScreenState extends State<PosScreen> {
   bool _isLoading = true;
   final _searchController = TextEditingController();
 
-  ClienteModel _clienteSeleccionado = ClienteModel.consumidorFinal();
+  /// Cliente de la venta en curso: initia en null para forzar una
+  /// asignación explícita. El checkbox "Consumidor Final" habilita el cobro
+  /// sin seleccionar un cliente registrado (resuelto al registro real
+  /// V-00000000 del backend, nunca a un ID hardcodeado).
+  ClienteModel? _clienteSeleccionado;
+  bool _esConsumidorFinal = false;
+  ClienteModel? _cacheConsumidorFinal;
   double _tasaCambio = 36.50;
   bool _tasaEsBCV = false;
 
@@ -97,6 +104,7 @@ class _PosScreenState extends State<PosScreen> {
           _filteredProductos = productos;
           _isLoading = false;
         });
+        _ofrecerRestaurarCarrito();
       }
     } catch (e) {
       if (mounted) {
@@ -128,6 +136,71 @@ class _PosScreenState extends State<PosScreen> {
     });
   }
 
+  /// Sincroniza el snapshot global del carrito para el guardia de sesión
+  /// (respaldo automático si el JWT expira a mitad de una venta).
+  void _sincronizarRespaldoCarrito() {
+    SessionGuard.carritoActual = _carrito
+        .map((i) => {'producto': i.producto.toJson(), 'cantidad': i.cantidad})
+        .toList();
+  }
+
+  /// Si existe un carrito respaldado (por una sesión que expiró a mitad de
+  /// venta), pregunta al cajero si desea restaurarlo. Si suelta o acepta,
+  /// la copia en SharedPreferences se elimina para no volver a preguntar.
+  Future<void> _ofrecerRestaurarCarrito() async {
+    final respaldo = await SessionGuard.leerRespaldoCarrito();
+    if (respaldo == null || !mounted) return;
+    await SessionGuard.limpiarRespaldoCarrito();
+    // Solo se ofrecen ítems cuyo producto sigue existiendo y tiene stock,
+    // limitados al stock actual (el inventario pudo cambiar entre sesiones).
+    final restaurables = <CartItem>[];
+    for (final entrada in respaldo) {
+      try {
+        final prod = ProductoModel.fromJson(
+            (entrada['producto'] as Map).cast<String, dynamic>());
+        final vivo = _productos.cast<ProductoModel?>().firstWhere(
+              (p) => p!.productoId == prod.productoId,
+              orElse: () => null,
+            );
+        final cant =
+            ((entrada['cantidad'] as num?)?.toInt() ?? 1).clamp(1, 1 << 30);
+        if (vivo != null && vivo.stockActual > 0) {
+          restaurables.add(CartItem(
+              producto: vivo, cantidad: cant > vivo.stockActual ? vivo.stockActual : cant));
+        }
+      } catch (_) {
+        // Entrada corrupta: simplemente se omite.
+      }
+    }
+    if (restaurables.isEmpty || !mounted) return;
+    final restaurar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Carrito recuperado'),
+        content: Text(
+          'La sesión anterior expiró con ${restaurables.length} producto(s) sin cobrar. ¿Deseas restaurar ese carrito?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Empezar de cero'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Restaurar carrito'),
+          ),
+        ],
+      ),
+    );
+    if (restaurar == true && mounted) {
+      setState(() {
+        // Los FocusNode de cantidad se ajustan solos en el build siguiente.
+        _carrito.addAll(restaurables);
+      });
+      _sincronizarRespaldoCarrito();
+    }
+  }
+
   void _agregarAlCarrito(ProductoModel prod) {
     setState(() {
       final index = _carrito.indexWhere(
@@ -149,6 +222,7 @@ class _PosScreenState extends State<PosScreen> {
         }
       }
     });
+    _sincronizarRespaldoCarrito();
   }
 
   void _actualizarCantidadManual(CartItem item, int nuevaCantidad) {
@@ -164,6 +238,7 @@ class _PosScreenState extends State<PosScreen> {
         item.cantidad = nuevaCantidad;
       }
     });
+    _sincronizarRespaldoCarrito();
   }
 
   /// Elimina un ítem del carrito (botón papelera, X o Dismissible).
@@ -183,6 +258,7 @@ class _PosScreenState extends State<PosScreen> {
         }
       }
     });
+    _sincronizarRespaldoCarrito();
   }
 
   Future<void> _seleccionarCliente() async {
@@ -209,8 +285,31 @@ class _PosScreenState extends State<PosScreen> {
   double get _ivaTotal => _subtotalTotal * 0.16;
   double get _totalPagar => _subtotalTotal + _ivaTotal;
 
+  /// Resuelve el registro real del "Consumidor Final" (V-00000000) en el
+  /// backend y lo memoriza. Devuelve null si no hay conexión/no existe.
+  Future<ClienteModel?> _obtenerConsumidorFinal() async {
+    if (_cacheConsumidorFinal != null) return _cacheConsumidorFinal;
+    _cacheConsumidorFinal =
+        await ApiService.buscarClientePorDocumento('V-00000000');
+    // Si el backend no reporta el registro (aún sin seed), usa el modelo
+    // estático como última red de seguridad con su ID conocido.
+    return _cacheConsumidorFinal ?? ClienteModel.consumidorFinal();
+  }
+
+  /// Validación previa del cobro: hay cliente asignado o el checkbox explícito
+  /// de Consumidor Final está marcado.
+  bool get _puedeCobrar =>
+      _carrito.isNotEmpty && (_clienteSeleccionado != null || _esConsumidorFinal);
+
   Future<void> _iniciarProcesoVenta() async {
-    if (_carrito.isEmpty) return;
+    if (!_puedeCobrar) return;
+
+    // Resolución del cliente efectivo: asignado explícitamente o el
+    // registro real de Consumidor Final rescatado del backend.
+    final ClienteModel cliente = _clienteSeleccionado ??
+        (await _obtenerConsumidorFinal()) ??
+        ClienteModel.consumidorFinal();
+    if (!mounted) return;
 
     final resultadoPago = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -224,7 +323,7 @@ class _PosScreenState extends State<PosScreen> {
 
     if (resultadoPago != null) {
       final facturaData = {
-        "Cliente_ID": _clienteSeleccionado.clienteId ?? 1,
+        "Cliente_ID": cliente.clienteId,
         "Tipo_Pago": "Multipago",
         "Tasa_Cambio": resultadoPago['tasaCambio'],
         "Detalles_Pago": resultadoPago['detallesPago'],
@@ -260,8 +359,10 @@ class _PosScreenState extends State<PosScreen> {
           }
           setState(() {
             _carrito.clear();
-            _clienteSeleccionado = ClienteModel.consumidorFinal();
+            _clienteSeleccionado = null;
+            _esConsumidorFinal = false;
           });
+          _sincronizarRespaldoCarrito();
           _cargarProductos();
         } else {
           _mostrarSnackBar('Error procesando venta: ${result['error']}');
@@ -369,50 +470,100 @@ class _PosScreenState extends State<PosScreen> {
 
   Widget _buildClienteCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final cliente = _clienteSeleccionado;
     return Card(
       elevation: 1,
       child: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.person, color: cs.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _clienteSeleccionado.nombreRazonSocial,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Icon(
+                  cliente != null ? Icons.person : Icons.person_search,
+                  color: cliente != null ? cs.primary : cs.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: cliente == null
+                      ? Text(
+                          'Sin cliente asignado',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: cs.error,
+                            fontSize: 13,
+                          ),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              cliente.nombreRazonSocial,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${cliente.tipoDocumento}-${cliente.numDocumento}',
+                              style: TextStyle(
+                                  fontSize: 11, color: cs.onSurfaceVariant),
+                            ),
+                            if (cliente.direccion != null &&
+                                cliente.direccion!.isNotEmpty)
+                              Text(
+                                cliente.direccion!,
+                                style: TextStyle(
+                                    fontSize: 10, color: cs.onSurfaceVariant),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            if (cliente.telefono != null &&
+                                cliente.telefono!.isNotEmpty)
+                              Text(
+                                'Tel: ${cliente.telefono}',
+                                style: TextStyle(
+                                    fontSize: 10, color: cs.onSurfaceVariant),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(48, 48),
                   ),
-                  Text(
-                    '${_clienteSeleccionado.tipoDocumento}-${_clienteSeleccionado.numDocumento}',
-                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-                  ),
-                  if (_clienteSeleccionado.direccion != null &&
-                      _clienteSeleccionado.direccion!.isNotEmpty)
-                    Text(
-                      _clienteSeleccionado.direccion!,
-                      style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  if (_clienteSeleccionado.telefono != null &&
-                      _clienteSeleccionado.telefono!.isNotEmpty)
-                    Text(
-                      'Tel: ${_clienteSeleccionado.telefono}',
-                      style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
+                  onPressed: _seleccionarCliente,
+                  child: Text(cliente == null ? 'Asignar' : 'CAMBIAR'),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: _seleccionarCliente,
-              child: const Text('CAMBIAR'),
+            // Checkbox explícito: permite cobrar sin cliente nombrado, pero
+            // nunca con un fallback implícito.
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () =>
+                  setState(() => _esConsumidorFinal = !_esConsumidorFinal),
+              child: SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: _esConsumidorFinal,
+                      onChanged: (v) =>
+                          setState(() => _esConsumidorFinal = v ?? false),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Venta sin cliente (Consumidor Final)',
+                        style: TextStyle(fontSize: 12, color: cs.onSurface),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -510,9 +661,22 @@ class _PosScreenState extends State<PosScreen> {
               backgroundColor: cs.primary,
               foregroundColor: cs.onPrimary,
             ),
-            onPressed: _carrito.isEmpty ? null : (onCobrar ?? _iniciarProcesoVenta),
+            onPressed: !_puedeCobrar
+                ? null
+                : (onCobrar ?? _iniciarProcesoVenta),
           ),
         ),
+        // Con el carrito cargado pero sin cliente, se orienta al cajero.
+        if (_carrito.isNotEmpty &&
+            _clienteSeleccionado == null &&
+            !_esConsumidorFinal)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Asigna un cliente o marca "Consumidor Final" para cobrar.',
+              style: TextStyle(fontSize: 12, color: cs.error),
+            ),
+          ),
       ],
     );
   }
@@ -865,7 +1029,7 @@ class _CartItemTileState extends State<_CartItemTile> {
                   IconButton(
                     icon: const Icon(Icons.close, size: 18),
                     iconSize: 18,
-                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                     color: cs.onSurfaceVariant,
                     tooltip: 'Quitar producto',
                     onPressed: widget.onEliminar,

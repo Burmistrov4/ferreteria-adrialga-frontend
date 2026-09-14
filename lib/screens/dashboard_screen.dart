@@ -124,17 +124,29 @@ class _MetricaCard extends StatelessWidget {
                 ],
               ),
               const Spacer(),
-              Text(
-                valor,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              // FittedBox para que el valor monetario escale hacia abajo
+              // en tarjetas angostas sin desbordar, jamás agrandando.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      valor,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
               Text(
                 titulo,
+                maxLines: 1,
                 style: TextStyle(
                   fontSize: 12,
                   color: colorScheme.onSurface,

@@ -3,6 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/factura_model.dart';
+import 'configuracion_service.dart';
 
 /// Motor de impresión térmica de tickets (formato 80mm).
 ///
@@ -12,11 +13,6 @@ import '../models/factura_model.dart';
 /// como NOTA DE CRÉDITO referenciando la factura afectada.
 class ImpresionService {
   ImpresionService._();
-
-  // Datos de cabecera del establecimiento (configuración fiscal Adrialga).
-  static const String _nombre = 'FERRETERÍA ADRIALGA, C.A.';
-  static const String _rif = 'RIF: J-12345678-9';
-  static const String _direccion = 'Av. Principal, Local 1';
 
   static String _fmt(double v) => v.toStringAsFixed(2);
 
@@ -63,24 +59,31 @@ static String _truncar(String s, int max) =>
   static Future<pw.Document> _generar(
     FacturaModel f, {
     required bool esNotaCredito,
+    double anchoMm = 80,
   }) async {
+    final cfg = await ConfiguracionService.obtener();
     final doc = pw.Document();
+    // Columnas compactas para 57mm: reduce el ancho del nombre de producto.
+    final es57 = anchoMm < 70;
+    final anchoNombre = es57 ? 96.0 : 150.0;
 
     doc.addPage(
       pw.MultiPage(
-        // roll80 tiene altura infinita (rompe MultiPage): usar ancho 80mm con
+        // rollXX tiene altura infinita (rompe MultiPage): usar ancho dado con
         // altura finita de 297mm (más alto que un ticket típico).
         pageFormat: PdfPageFormat(
-          80 * PdfPageFormat.mm,
+          anchoMm * PdfPageFormat.mm,
           297 * PdfPageFormat.mm,
           marginAll: 0,
         ),
-        margin: const pw.EdgeInsets.all(8),
+        margin: pw.EdgeInsets.all(es57 ? 4 : 8),
         build: (_) => [
-          // ── Encabezado del establecimiento ──
-          _ctr(_nombre, bold: true, size: 11),
-          _ctr(_rif, size: 8, color: PdfColors.grey700),
-          _ctr(_direccion, size: 8, color: PdfColors.grey700),
+          // ── Encabezado del establecimiento (dinámico desde /configuracion) ──
+          _ctr(cfg.nombre.toUpperCase(), bold: true, size: 11),
+          _ctr('RIF: ${cfg.rif}', size: 8, color: PdfColors.grey700),
+          _ctr(cfg.direccion, size: 8, color: PdfColors.grey700),
+          if (cfg.telefono.isNotEmpty)
+            _ctr('Tel: ${cfg.telefono}', size: 8, color: PdfColors.grey700),
           pw.SizedBox(height: 4),
           pw.Divider(color: PdfColors.black, height: 1),
           pw.SizedBox(height: 4),
@@ -103,6 +106,9 @@ static String _truncar(String s, int max) =>
             'RIF/Cédula',
             (f.clienteRif ?? '').isNotEmpty ? f.clienteRif! : 'V-00000000',
           ),
+          if ((f.clienteDireccion ?? '').isNotEmpty)
+            _ctr(_truncar('Dir: ${f.clienteDireccion}', 46),
+                size: 7.5, color: PdfColors.grey700),
           pw.Divider(color: PdfColors.black, height: 1),
           pw.SizedBox(height: 3),
 
@@ -133,8 +139,8 @@ static String _truncar(String s, int max) =>
                           style: const pw.TextStyle(fontSize: 8.5)),
                     ),
                     pw.SizedBox(
-                      width: 150,
-                      child: pw.Text(_truncar(d.productoNombre, 42),
+                      width: anchoNombre,
+                      child: pw.Text(_truncar(d.productoNombre, es57 ? 26 : 42),
                           overflow: pw.TextOverflow.clip,
                           style: const pw.TextStyle(fontSize: 8.5)),
                     ),
@@ -196,11 +202,14 @@ static String _truncar(String s, int max) =>
   }
 
   /// Imprime el ticket térmico de una factura o Nota de Crédito.
+  /// `anchoMm` soporta 80mm (común) y 57/58mm (impresoras compactas).
   static Future<void> imprimirTicketFactura(
     FacturaModel factura, {
     bool esNotaCredito = false,
+    double anchoMm = 80,
   }) async {
-    final doc = await _generar(factura, esNotaCredito: esNotaCredito);
+    final doc =
+        await _generar(factura, esNotaCredito: esNotaCredito, anchoMm: anchoMm);
     await Printing.layoutPdf(
       onLayout: (_) => doc.save(),
       name: 'ticket_${esNotaCredito ? 'NC' : 'FAC'}_${factura.numeroControl ?? factura.facturaId}.pdf',

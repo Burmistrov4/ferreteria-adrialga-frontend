@@ -214,70 +214,295 @@ class _InventarioScreenState extends State<InventarioScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _productosFiltrados.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No hay productos que coincidan con el filtro',
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2_outlined,
+                          size: 40, color: cs.outline),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No hay productos que coincidan con el filtro',
+                      ),
+                    ],
                   ),
                 )
-              : ListView.separated(
-                  itemCount: _productosFiltrados.length,
-                  separatorBuilder: (_, _) => const Divider(),
-                  itemBuilder: (context, index) {
-                    final prod = _productosFiltrados[index];
-                    final bajoStock = prod.stockActual <= prod.stockMinimo;
-                    return ListTile(
-                      title: Text(
-                        prod.nombre,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        'SKU: ${prod.skuCodigo} | Stock: ${prod.stockActual} (Mín: ${prod.stockMinimo})',
-                      ),
-                      leading: CircleAvatar(
-                        backgroundColor: bajoStock
-                            ? cs.errorContainer
-                            : cs.primaryContainer,
-                        child: Icon(
-                          bajoStock ? Icons.warning : Icons.inventory_2,
-                          color: bajoStock
-                              ? cs.onErrorContainer
-                              : cs.onPrimaryContainer,
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '\$${prod.precioVenta.toStringAsFixed(2)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: cs.primary,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                            icon: Icon(Icons.edit, color: cs.primary),
-                            tooltip: 'Editar producto',
-                            onPressed: () => _abrirDialogoProducto(prod),
-                          ),
-                          IconButton(
-                            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                            icon: Icon(Icons.delete, color: cs.error),
-                            tooltip: 'Eliminar producto',
-                            onPressed: () => _eliminarProducto(prod),
-                          ),
-                        ],
-                      ),
-                    );
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Vista adaptativa: tabla de grilla en escritorio, tarjetas
+                    // (con bottom sheet de detalle) en pantallas móviles.
+                    if (constraints.maxWidth >= 600) {
+                      return _vistaTablaEscritorio(cs);
+                    }
+                    return _vistaTarjetasMovil(cs);
                   },
                 ),
         ),
       ],
+    );
+  }
+
+  /// Detalle completo y acciones en hoja inferior (módulo móvil): todos los
+  /// botones ≥48dp, contenido desplazable para nunca desbordar.
+  void _mostrarDetalleProducto(BuildContext context, ProductoModel prod) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final bajoStock = prod.stockActual <= prod.stockMinimo;
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  prod.nombre,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                _filaDetalle('SKU', prod.skuCodigo),
+                _filaDetalle('Precio de venta',
+                    '\$${prod.precioVenta.toStringAsFixed(2)}'),
+                _filaDetalle('Costo de compra',
+                    '\$${prod.costoUltimo.toStringAsFixed(2)}'),
+                _filaDetalle('Margen', '${prod.margenGanancia.toStringAsFixed(1)}%'),
+                _filaDetalle(
+                  'Stock',
+                  '${prod.stockActual} uds (mínimo ${prod.stockMinimo})',
+                  color: bajoStock ? cs.error : null,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                        ),
+                        icon: Icon(Icons.edit_outlined, color: cs.primary),
+                        label: const Text('Editar'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _abrirDialogoProducto(prod);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.error,
+                          minimumSize: const Size(48, 48),
+                        ),
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Eliminar'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _eliminarProducto(prod);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _filaDetalle(String etiqueta, String valor, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(etiqueta,
+              style: TextStyle(
+                  fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Flexible(
+            child: Text(
+              valor,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Móvil (<600): tarjetas con datos críticos (avatar, nombre truncado a 2
+  /// líneas, precio y chip de stock). Tap → bottom sheet con lo secundario.
+  Widget _vistaTarjetasMovil(ColorScheme cs) {
+    return ListView.separated(
+      itemCount: _productosFiltrados.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
+      itemBuilder: (context, index) {
+        final prod = _productosFiltrados[index];
+        final bajoStock = prod.stockActual <= prod.stockMinimo;
+        return Card(
+          margin: EdgeInsets.zero,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _mostrarDetalleProducto(context, prod),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: bajoStock
+                        ? cs.errorContainer
+                        : cs.primaryContainer,
+                    child: Icon(
+                      bajoStock ? Icons.warning_amber : Icons.inventory_2,
+                      color: bajoStock
+                          ? cs.onErrorContainer
+                          : cs.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          prod.nombre,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '\$${prod.precioVenta.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: cs.primary,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: bajoStock
+                                    ? cs.error
+                                    : cs.secondaryContainer,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'Stock: ${prod.stockActual}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: bajoStock
+                                      ? cs.onError
+                                      : cs.onSecondaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Escritorio (≥600): DataTable con scroll horizontal (columnas fijas).
+  Widget _vistaTablaEscritorio(ColorScheme cs) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columnSpacing: 24,
+            columns: const [
+              DataColumn(label: Text('Ítem')),
+              DataColumn(label: Text('SKU')),
+              DataColumn(label: Text('Precio'), numeric: true),
+              DataColumn(label: Text('Margen'), numeric: true),
+              DataColumn(label: Text('Stock'), numeric: true),
+              DataColumn(label: Text('Acciones')),
+            ],
+            rows: _productosFiltrados.map((prod) {
+              final bajoStock = prod.stockActual <= prod.stockMinimo;
+              return DataRow(
+                cells: [
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 260),
+                      child: Text(
+                        prod.nombre,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  DataCell(Text(prod.skuCodigo)),
+                  DataCell(Text('\$${prod.precioVenta.toStringAsFixed(2)}')),
+                  DataCell(Text('${prod.margenGanancia.toStringAsFixed(1)}%')),
+                  DataCell(
+                    Text(
+                      bajoStock
+                          ? '${prod.stockActual} ⚠'
+                          : '${prod.stockActual}',
+                      style: TextStyle(
+                        color: bajoStock ? cs.error : null,
+                        fontWeight:
+                            bajoStock ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          constraints: const BoxConstraints(
+                              minWidth: 48, minHeight: 48),
+                          icon: Icon(Icons.edit_outlined, color: cs.primary),
+                          tooltip: 'Editar producto',
+                          onPressed: () => _abrirDialogoProducto(prod),
+                        ),
+                        IconButton(
+                          constraints: const BoxConstraints(
+                              minWidth: 48, minHeight: 48),
+                          icon: Icon(Icons.delete_outline, color: cs.error),
+                          tooltip: 'Eliminar producto',
+                          onPressed: () => _eliminarProducto(prod),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ),
     );
   }
 

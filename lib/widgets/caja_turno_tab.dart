@@ -450,12 +450,31 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
           else
             ..._arqueos.map<Widget>((a) {
               final diferencia = _numD(a['diferencia']);
-              final cuadrado = diferencia.abs() < 0.01;
               final esAbierto = a['estado'] == 'ABIERTA';
-              // Verde = cuadra; rojo = faltante (entregó de menos); ámbar = sobrante.
-              final Color indicador = cuadrado
-                  ? cs.tertiary
-                  : (diferencia > 0 ? cs.error : cs.tertiary);
+              // Estado explícito del backend (MATCH/SURPLUS/DEFICIT). Si el
+              // registro es antiguo y no trae el campo, se deriva de la
+              // diferencia como respaldo.
+              final String? estadoArqueo = a['estadoArqueo']?.toString();
+              final String estado = esAbierto
+                  ? 'ABIERTA'
+                  : (estadoArqueo ??
+                      (diferencia.abs() < 0.01
+                          ? 'MATCH'
+                          : (diferencia > 0 ? 'DEFICIT' : 'SURPLUS')));
+              // Semántica de color: verde = cuadró, rojo = faltante
+              // (pérdida), ámbar = sobrante (efectivo no justificado).
+              final Color indicador = switch (estado) {
+                'MATCH' => cs.tertiary,
+                'DEFICIT' => cs.error,
+                'SURPLUS' => Colors.amber.shade800,
+                _ => cs.primary,
+              };
+              final String etiqueta = switch (estado) {
+                'MATCH' => 'OK',
+                'DEFICIT' => 'Falta \$${diferencia.toStringAsFixed(2)}',
+                'SURPLUS' => 'Sobra \$${(-diferencia).toStringAsFixed(2)}',
+                _ => 'En curso',
+              };
               return Card(
                 color: cs.surfaceContainerLow,
                 margin: const EdgeInsets.only(bottom: 8),
@@ -465,7 +484,11 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                     child: Icon(
                       esAbierto
                           ? Icons.timelapse
-                          : (cuadrado ? Icons.check : Icons.warning_amber),
+                          : (estado == 'MATCH'
+                              ? Icons.check_circle
+                              : estado == 'DEFICIT'
+                                  ? Icons.error
+                                  : Icons.warning_amber),
                       color: esAbierto ? cs.primary : indicador,
                     ),
                   ),
@@ -478,11 +501,7 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
                     style: TextStyle(color: cs.onSurfaceVariant),
                   ),
                   trailing: Text(
-                    cuadrado
-                        ? 'OK'
-                        : (diferencia > 0
-                            ? 'Falta \$${diferencia.toStringAsFixed(2)}'
-                            : 'Sobra \$${(-diferencia).toStringAsFixed(2)}'),
+                    etiqueta,
                     style: TextStyle(
                       color: indicador,
                       fontWeight: FontWeight.bold,

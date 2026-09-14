@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'screens/login_screen.dart';
 import 'services/api_service.dart';
+import 'services/session_guard.dart';
 import 'services/shortcut_service.dart';
 import 'providers/theme_notifier.dart';
 
@@ -12,6 +13,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Restaurar la sesión persistida (token JWT) antes de mostrar la app
   await ApiService.loadToken();
+  // Guardia global JWT: ante 401 (TOKEN_EXPIRADO) respalda el carrito del
+  // POS y redirige al login con mensaje claro.
+  ApiService.onSesionExpirada = SessionGuard.manejarSesionExpirada;
   // Restaurar la preferencia de tema (claro/oscuro/sistema) antes del primer frame
   final themeNotifier = await ThemeNotifier.create();
   runApp(

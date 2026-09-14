@@ -11,6 +11,7 @@ import '../screens/finanzas_screen.dart';
 import '../screens/configuracion_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/api_service.dart';
+import '../services/navigation_service.dart';
 
 /// Destino de navegación adaptativa del shell principal.
 class DestinoNav {
@@ -83,6 +84,20 @@ class _AppShellState extends State<AppShell> {
 
   /// Destinos visibles directos en la barra inferior móvil (resto → "Más").
   static const List<int> _movilDirectos = [0, 1, 4, 5, 7];
+
+  @override
+  void initState() {
+    super.initState();
+    // Las pestañas sin historial (p.ej. Facturas abierta como pestaña base)
+    // usan este canal para retroceder a Inicio desde su botón Atrás.
+    NavigationService.irAInicio = () => _seleccionar(0);
+  }
+
+  @override
+  void dispose() {
+    NavigationService.irAInicio = null;
+    super.dispose();
+  }
 
   void _seleccionar(int i) {
     if (!mounted) return;

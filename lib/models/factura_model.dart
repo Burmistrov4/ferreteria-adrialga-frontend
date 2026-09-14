@@ -13,6 +13,8 @@ class FacturaModel {
   final int usuarioId;
   final String? clienteNombre;
   final String? clienteRif;
+  final String? clienteDireccion;
+  final String? clienteTelefono;
   final String? usuarioNombre;
   final List<DetalleFacturaModel> detalles;
   final List<PagoFacturaModel> pagos;
@@ -31,6 +33,8 @@ class FacturaModel {
     required this.usuarioId,
     this.clienteNombre,
     this.clienteRif,
+    this.clienteDireccion,
+    this.clienteTelefono,
     this.usuarioNombre,
     this.detalles = const [],
     this.pagos = const [],
@@ -69,6 +73,16 @@ class FacturaModel {
       clienteRif: _s(
         json['clientes']?['RIF_Cedula'] ??
             json['clientes']?['rifCedula'] ??
+            '',
+      ),
+      clienteDireccion: _s(
+        json['clientes']?['Direccion'] ??
+            json['clientes']?['direccion'] ??
+            '',
+      ),
+      clienteTelefono: _s(
+        json['clientes']?['Telefono'] ??
+            json['clientes']?['telefono'] ??
             '',
       ),
       usuarioNombre: _s(

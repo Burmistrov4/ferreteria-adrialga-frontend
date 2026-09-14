@@ -36,13 +36,17 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
   Future<void> _crearCategoria() async {
     final result = await _dialogoCategoria();
     if (result != null) {
-      final ok = await ApiService.createCategoria(
+      final res = await ApiService.createCategoria(
         result['Nombre'].toString(),
         result['Descripcion']?.toString() ?? '',
       );
-      if (!ok && mounted) {
+      if (res['success'] != true && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al crear la categoría')),
+          SnackBar(
+            content: Text(res['error']?.toString() ??
+                'Error al crear la categoría'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
       } else {
         _cargarCategorias();
@@ -119,18 +123,21 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(categoria == null ? 'Nueva Categoría' : 'Editar Categoría'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombreCtrl,
-              decoration: const InputDecoration(labelText: 'Nombre *'),
-            ),
-            TextField(
-              controller: descCtrl,
-              decoration: const InputDecoration(labelText: 'Descripción'),
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nombreCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nombre *'),
+              ),
+              TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(labelText: 'Descripción'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(

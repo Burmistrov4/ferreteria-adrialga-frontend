@@ -10,6 +10,12 @@ class ProductoModel {
   final int? categoriaId;
   final bool activo;
 
+  /// Margen bruto configurado en % sobre el costo (0 si aún no se define).
+  final double margenGanancia;
+
+  /// Último costo de compra registrado (base del precio sugerido).
+  final double costoUltimo;
+
   ProductoModel({
     required this.productoId,
     required this.skuCodigo,
@@ -21,6 +27,8 @@ class ProductoModel {
     required this.stockMinimo,
     this.categoriaId,
     this.activo = true,
+    this.margenGanancia = 0,
+    this.costoUltimo = 0,
   });
 
   int get id => productoId;
@@ -65,6 +73,9 @@ class ProductoModel {
       stockMinimo: _toInt(json['stockMinimo'] ?? json['Stock_Minimo']),
       categoriaId: _toIntNullable(json['categoriaId'] ?? json['Categoria_ID']),
       activo: _toBool(json['activo'] ?? json['Activo'] ?? true),
+      margenGanancia:
+          _toDouble(json['margenGanancia'] ?? json['Margen_Ganancia']),
+      costoUltimo: _toDouble(json['costoUltimo'] ?? json['Costo_Ultimo']),
     );
   }
 

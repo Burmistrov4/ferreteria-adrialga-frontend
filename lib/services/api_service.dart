@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -134,6 +134,35 @@ class ApiService {
     }
   }
 
+  /// Callback global invocado una sola vez cuando el backend reporta la
+  /// sesión expirada (401 con `code: TOKEN_EXPIRADO | TOKEN_INVALIDO`).
+  /// Lo registra main.dart con el SessionGuard (respaldar carrito + login).
+  static void Function()? onSesionExpirada;
+  static DateTime? _ultimaExpiracionNotificada;
+
+  /// Interceptor central de sesión fiado en TODAS las llamadas autenticadas:
+  /// ante un 401 con código de token vencido/inválido, limpia la sesión y
+  /// notifica al UI (con antirrebote de 10 s para ráfagas de llamadas).
+  static void _verificarSesion(http.Response response) {
+    if (response.statusCode != 401) return;
+    String? code;
+    try {
+      final c = jsonDecode(response.body);
+      if (c is Map<String, dynamic>) code = c['code']?.toString();
+    } catch (_) {}
+    if (code != 'TOKEN_EXPIRADO' && code != 'TOKEN_INVALIDO') return;
+    final ahora = DateTime.now();
+    if (_ultimaExpiracionNotificada != null &&
+        ahora.difference(_ultimaExpiracionNotificada!).inSeconds < 10) {
+      return;
+    }
+    _ultimaExpiracionNotificada = ahora;
+    _token = null;
+    usuarioRol = null;
+    logout(); // limpia SharedPreferences
+    onSesionExpirada?.call();
+  }
+
   // --- CLIENTES ---
   /// Búsqueda flexible en el servidor (nombre, RIF o cédula). Consulta
   /// GET /clientes?q=... que filtra con OR en el backend. Devuelve una lista
@@ -146,6 +175,7 @@ class ApiService {
             headers: _headers,
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((json) => ClienteModel.fromJson(json)).toList();
@@ -166,6 +196,7 @@ class ApiService {
             headers: _headers,
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         return ClienteModel.fromJson(data);
@@ -189,6 +220,7 @@ class ApiService {
             headers: _publicHeaders,
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return {
@@ -222,6 +254,7 @@ class ApiService {
             body: jsonEncode(bodyData),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
@@ -246,6 +279,7 @@ class ApiService {
             headers: _headers,
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((json) => ClienteModel.fromJson(json)).toList();
@@ -265,6 +299,7 @@ class ApiService {
     final response = await http
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => ClienteModel.fromJson(json)).toList();
@@ -284,6 +319,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         return {'success': true};
       }
@@ -298,6 +334,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/clientes/$id'), headers: _headers)
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 204) {
         return {'success': true};
       }
@@ -312,6 +349,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/categorias'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => CategoriaModel.fromJson(json)).toList();
@@ -319,7 +357,18 @@ class ApiService {
     throw Exception('Error al cargar categorías');
   }
 
-  static Future<bool> createCategoria(String nombre, String descripcion) async {
+  /// Extrae el `message` del backend de una respuesta de error.
+  static String _mensajeErrorRespuesta(http.Response response, String fallback) {
+    try {
+      final body = jsonDecode(response.body);
+      final m = body is Map<String, dynamic> ? body['message'] : null;
+      return m?.toString().trim().isNotEmpty == true ? m.toString() : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  static Future<Map<String, dynamic>> createCategoria(String nombre, String descripcion) async {
     try {
       final response = await http
           .post(
@@ -328,19 +377,31 @@ class ApiService {
             body: jsonEncode({'Nombre': nombre, 'Descripcion': descripcion}),
           )
           .timeout(const Duration(seconds: 10));
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (_) {
-      return false;
+          _verificarSesion(response);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'error': _mensajeErrorRespuesta(response, 'Error al crear la categoría'),
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
     }
   }
 
   /// Crea una categoría y devuelve el modelo recién creado (`null` si falla).
   /// Reutilizado por el diálogo de producto para crear categorías "in‑line"
   /// sin salir del formulario y seleccionarlas automáticamente.
+  /// Expone `ultimoErrorCategoria` para que la UI muestre el mensaje exacto
+  /// devuelto por el backend (409 duplicado, 400 validación, etc.).
+  static String? ultimoErrorCategoria;
+
   static Future<CategoriaModel?> createCategoriaConRetorno(
     String nombre,
     String descripcion,
   ) async {
+    ultimoErrorCategoria = null;
     try {
       final response = await http
           .post(
@@ -349,6 +410,7 @@ class ApiService {
             body: jsonEncode({'Nombre': nombre, 'Descripcion': descripcion}),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         final dynamic data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) {
@@ -356,9 +418,13 @@ class ApiService {
         }
         final catId = (data as num?)?.toInt();
         if (catId != null) return CategoriaModel(categoriaId: catId, nombreCategoria: nombre, descripcion: descripcion);
+      } else {
+        ultimoErrorCategoria =
+            _mensajeErrorRespuesta(response, 'Error al crear la categoría');
       }
       return null;
-    } catch (_) {
+    } catch (e) {
+      ultimoErrorCategoria = e.toString();
       return null;
     }
   }
@@ -375,6 +441,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       return {'success': false, 'error': response.body};
     } catch (e) {
@@ -387,6 +454,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/categorias/$id'), headers: _headers)
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 204) {
         return {'success': true};
       }
@@ -401,6 +469,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/productos'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => ProductoModel.fromJson(json)).toList();
@@ -417,6 +486,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (_) {
       return false;
@@ -432,6 +502,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -443,9 +514,42 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/productos/$id'))
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// GET /configuracion — datos legales de la tienda (PDF/tickets).
+  static Future<Map<String, dynamic>> getConfiguracionTienda() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/configuracion'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Error al cargar la configuración de la tienda');
+  }
+
+  /// PUT /configuracion — actualiza los datos legales de la tienda.
+  static Future<Map<String, dynamic>> updateConfiguracionTienda(
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/configuracion'),
+            headers: _headers,
+            body: jsonEncode(data),
+          )
+          .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
+      if (response.statusCode == 200) return {'success': true};
+      return {'success': false, 'error': response.body};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
     }
   }
 
@@ -454,6 +558,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/proveedores'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
@@ -471,6 +576,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true};
       }
@@ -493,6 +599,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       return {'success': false, 'error': response.body};
     } catch (e) {
@@ -507,6 +614,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/proveedores/$id'), headers: _headers)
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       try {
         final body = jsonDecode(response.body);
@@ -536,6 +644,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, ...decod};
@@ -563,6 +672,7 @@ class ApiService {
             body: jsonEncode({'Credencial': usuario, 'Password': password}),
           )
           .timeout(const Duration(seconds: 8));
+          _verificarSesion(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -585,6 +695,7 @@ class ApiService {
       final response = await http
           .get(Uri.parse('$baseUrl/clientes/bcv-rate'), headers: _publicHeaders)
           .timeout(const Duration(seconds: 6));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final tasa = data['tasa'];
@@ -601,6 +712,7 @@ class ApiService {
       final response = await http
           .get(Uri.parse('$baseUrl/tasa-cambio'))
           .timeout(const Duration(seconds: 5));
+          _verificarSesion(response);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final tasa = data['tasa'];
@@ -624,6 +736,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/dashboard'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -642,6 +755,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -659,6 +773,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 15));
+        _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception('Error al exportar el libro diario (HTTP ${response.statusCode})');
     }
@@ -703,6 +818,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 20));
+        _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception(_mensajeError(response.body));
     }
@@ -725,6 +841,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 20));
+        _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception(_mensajeError(response.body));
     }
@@ -750,6 +867,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 20));
+        _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception(_mensajeError(response.body));
     }
@@ -782,6 +900,7 @@ class ApiService {
             body: jsonEncode(facturaData),
           )
           .timeout(const Duration(seconds: 12));
+          _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decod = _decodificarError(response.body);
         return {
@@ -829,6 +948,7 @@ class ApiService {
             body: jsonEncode({'pinSupervisor': pinSupervisor}),
           )
           .timeout(const Duration(seconds: 15));
+          _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {
@@ -864,6 +984,7 @@ class ApiService {
             body: jsonEncode({'pin': pin}),
           )
           .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200) {
         return {'valido': true, ...decod};
@@ -900,6 +1021,7 @@ class ApiService {
     final response = await http
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => FacturaModel.fromJson(json)).toList();
@@ -916,6 +1038,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/tesoreria/saldo'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -927,6 +1050,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/tesoreria/patrimonio'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -950,6 +1074,7 @@ class ApiService {
     final response = await http
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -961,6 +1086,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/tesoreria/cuentas-pagar'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as List<dynamic>;
     }
@@ -985,6 +1111,7 @@ class ApiService {
             }),
           )
           .timeout(const Duration(seconds: 12));
+          _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, ...decod};
@@ -1020,6 +1147,7 @@ class ApiService {
             }),
           )
           .timeout(const Duration(seconds: 12));
+          _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, ...decod};
@@ -1043,6 +1171,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/caja/estado'), headers: _headers)
         .timeout(const Duration(seconds: 10));
+        _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -1064,6 +1193,7 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 12));
+        _verificarSesion(response);
     if (response.statusCode == 200 || response.statusCode == 201) {
       return {'success': true, ...jsonDecode(response.body)};
     }
@@ -1086,6 +1216,7 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 12));
+        _verificarSesion(response);
     if (response.statusCode == 200 || response.statusCode == 201) {
       return {'success': true, ...jsonDecode(response.body)};
     }
@@ -1108,6 +1239,7 @@ class ApiService {
     final response = await http.get(uri, headers: _headers).timeout(
           const Duration(seconds: 12),
         );
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final filas = data['filas'] as List<dynamic>? ?? [];
