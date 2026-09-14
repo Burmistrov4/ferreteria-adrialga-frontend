@@ -63,9 +63,7 @@ static String _truncar(String s, int max) =>
   }) async {
     final cfg = await ConfiguracionService.obtener();
     final doc = pw.Document();
-    // Columnas compactas para 57mm: reduce el ancho del nombre de producto.
     final es57 = anchoMm < 70;
-    final anchoNombre = es57 ? 96.0 : 150.0;
 
     doc.addPage(
       pw.MultiPage(
@@ -128,30 +126,32 @@ static String _truncar(String s, int max) =>
           ),
           pw.Divider(color: PdfColors.black, height: 1),
           pw.SizedBox(height: 2),
+          // Nombre con Expanded hereda el ancho libre real del papel: sin
+          // desbordes en roll57 (texto truncado con elipsis) ni roll80.
           ...f.detalles.map((d) => pw.Padding(
                 padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
                 child: pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.SizedBox(
-                      width: 28,
+                      width: 26,
                       child: pw.Text('${d.cantidad}',
                           style: const pw.TextStyle(fontSize: 8.5)),
                     ),
-                    pw.SizedBox(
-                      width: anchoNombre,
-                      child: pw.Text(_truncar(d.productoNombre, es57 ? 26 : 42),
+                    pw.Expanded(
+                      child: pw.Text(
+                          _truncar(d.productoNombre, es57 ? 26 : 42),
                           overflow: pw.TextOverflow.clip,
                           style: const pw.TextStyle(fontSize: 8.5)),
                     ),
                     pw.SizedBox(
-                      width: 42,
+                      width: 40,
                       child: pw.Text(_fmt(d.precioUnitario),
                           textAlign: pw.TextAlign.right,
                           style: const pw.TextStyle(fontSize: 8.5)),
                     ),
                     pw.SizedBox(
-                      width: 42,
+                      width: 40,
                       child: pw.Text(_fmt(d.subtotal),
                           textAlign: pw.TextAlign.right,
                           style: const pw.TextStyle(fontSize: 8.5)),

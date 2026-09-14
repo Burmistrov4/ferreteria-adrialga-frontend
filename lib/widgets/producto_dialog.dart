@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
+import 'variantes_tab.dart';
 
 class ProductoDialog extends StatefulWidget {
   final ProductoModel? producto;
@@ -256,17 +257,15 @@ class _ProductoDialogState extends State<ProductoDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.producto != null;
-    return AlertDialog(
-      title: Text(isEditing ? 'Editar Producto' : 'Nuevo Producto'),
-      content: LayoutBuilder(
-        builder: (context, constraints) {
-          final dosCol = constraints.maxWidth >= 600;
-          final cs = Theme.of(context).colorScheme;
-          return SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Form(
-              key: _formKey,
+    final generalContent = LayoutBuilder(
+      builder: (context, constraints) {
+        final dosCol = constraints.maxWidth >= 600;
+        final cs = Theme.of(context).colorScheme;
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Form(
+            key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -307,8 +306,20 @@ class _ProductoDialogState extends State<ProductoDialog> {
                               child: Text(cat.nombreCategoria),
                             );
                           }).toList(),
-                          onChanged: (val) =>
-                              setState(() => _selectedCategoriaId = val),
+                          onChanged: (val) {
+                            // Herencia de margen de la categoría: si el campo
+                            // Margen % está vacío o en 0, se pre-rellena con el
+                            // margen_sugerido de la categoría elegida.
+                            setState(() => _selectedCategoriaId = val);
+                            final cat = _categorias
+                                .where((c) => c.categoriaId == val)
+                                .firstOrNull;
+                            final ms = cat?.margenSugerido;
+                            if (ms != null && ms > 0 && _margen == 0) {
+                              _margenController.text = ms.toStringAsFixed(2);
+                              _recalcularPrecioDesdeCostoMargen();
+                            }
+                          },
                           validator: (val) =>
                               val == null ? 'Seleccione una categoría' : null,
                         ),
@@ -468,17 +479,88 @@ class _ProductoDialogState extends State<ProductoDialog> {
             ),
           );
         },
+    );
+
+    // En edición el diálogo se bifurca en 2 pestañas sin romper el alta
+    // rápida de un producto nuevo (que no tiene ID hasta guardarse).
+    if (!isEditing) {
+      return AlertDialog(
+        title: const Text('Nuevo Producto'),
+        content: generalContent,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: _guardar,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            ),
+            child: const Text('Guardar'),
+          ),
+        ],
+      );
+    }
+
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text(isEditing ? 'Editar Producto' : 'Nuevo Producto'),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      content: DefaultTabController(
+        length: 2,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TabBar(
+              labelColor: cs.primary,
+              unselectedLabelColor: cs.onSurfaceVariant,
+              indicatorColor: cs.primary,
+              tabs: const [
+                Tab(text: 'Datos Generales'),
+                Tab(text: 'Variantes'),
+              ],
+            ),
+            SizedBox(
+              height: 420,
+              // El ancho máximo se acota en pantallas táctiles
+              // (<560) para evitar overflows del TabBarView.
+              width: MediaQuery.of(context).size.width < 560
+                  ? MediaQuery.of(context).size.width - 56
+                  : 560,
+              child: TabBarView(
+                children: [
+                  generalContent,
+                  if (isEditing)
+                    VariantesTab(
+                      producto: widget.producto!,
+                      onGuardado: () {}, // backend refresca al cerrar
+                    )
+                  else
+                    Center(
+                      child: Text(
+                        'Guarda el producto primero para poder crear variantes.',
+                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
+          child: const Text('Cerrar'),
         ),
         ElevatedButton(
           onPressed: _guardar,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            backgroundColor: cs.primary,
+            foregroundColor: cs.onPrimary,
           ),
           child: Text(isEditing ? 'Actualizar' : 'Guardar'),
         ),

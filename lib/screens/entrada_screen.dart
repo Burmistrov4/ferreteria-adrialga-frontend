@@ -1,8 +1,11 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../models/categoria_model.dart';
 import '../models/producto_model.dart';
+import '../models/variante_model.dart';
 import '../services/api_service.dart';
 import '../services/shortcut_service.dart';
+import '../widgets/producto_dialog.dart';
 
 class EntradasScreen extends StatefulWidget {
   /// Producto a preseleccionar al abrir la pantalla (precarga de quiebre de stock).
@@ -30,6 +33,16 @@ List<dynamic> _proveedores = [];
   String _formaPago = 'Contado'; // 'Contado' | 'Credito'
 
   List<int> _idsBajoStock = [];
+
+  // ── Matriz/variantes + CPP predictivo (Fase 6, M4) ─────────────────────
+  List<ProductoVariante> _variantes = [];
+  ProductoVariante? _varianteSeleccionada;
+  bool _cargandoVariantes = false;
+  final _margenCtrl = TextEditingController();
+
+  /// Último texto tipeado en el buscador de producto (para ofrecer la
+  /// creación contextual "Crear nuevo producto: X").
+  String _ultimaBusqueda = '';
 
   @override
   void initState() {
@@ -73,6 +86,7 @@ List<dynamic> _proveedores = [];
   void dispose() {
     _cantidadController.dispose();
     _costoController.dispose();
+    _margenCtrl.dispose();
     super.dispose();
   }
 
@@ -116,6 +130,123 @@ Future<void> _cargarProductos() async {
     return '0.00';
   }
 
+  /// Carga las variantes del producto seleccionado para el selector de
+  /// entrada (si solo existe la variante por defecto, se oculta el selector).
+  Future<void> _cargarVariantesDe(ProductoModel p) async {
+    setState(() {
+      _cargandoVariantes = true;
+      _variantes = [];
+      _varianteSeleccionada = null;
+    });
+    try {
+      final data = await ApiService.getVariantesProducto(p.productoId);
+      final m = MatrizVariantes.fromJson(data);
+      if (!mounted) return;
+      setState(() {
+        // Sin personalización: solo hereda la variante por defecto (creada
+        // por el backfill) → se muestra como selector de "Default".
+        _variantes = m.matriz.where((v) => m.matriz.length > 1 || m.ejes.isNotEmpty).toList();
+        _varianteSeleccionada =
+            _variantes.length == 1 ? _variantes.first : null;
+        _cargandoVariantes = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _cargandoVariantes = false);
+    }
+  }
+
+  /// Creación contextual desde el autocomplete: abre el diálogo de producto,
+  /// persiste en el backend y selecciona el registro recién creado en la
+  /// entrada (el flujo de compra no se interrumpe).
+  Future<void> _crearProductoRapido(String nombreInicial) async {
+    List<CategoriaModel> categorias = [];
+    try {
+      categorias = await ApiService.getCategorias();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo cargar la lista de categorías')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => ProductoDialog(categorias: categorias),
+    );
+    if (data == null) return;
+    // Pre-llenar el nombre buscado por comodidad si el usuario abrió vacío.
+    data['Nombre'] = (data['Nombre'] as String).trim();
+    if (data['Nombre']!.isEmpty) data['Nombre'] = nombreInicial.trim();
+
+    final creado = await ApiService.createProducto(data);
+    if (!mounted) return;
+    if (creado) {
+      await _cargarProductos();
+      if (!mounted) return;
+      // Seleccionar el producto recién creado (mayor ID = el último).
+      try {
+        final nuevo = _productos.firstWhere(
+            (p) => p.nombre == data['Nombre'] && p.skuCodigo == data['SKU_Codigo']);
+        _alSeleccionarProducto(nuevo);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Producto "${nuevo.nombre}" creado y agregado a la entrada')),
+        );
+      } catch (_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Producto creado; selecciónalo en el buscador')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo crear el producto')),
+      );
+    }
+  }
+
+  /// Selección de producto desde autocomplete/chips: carga costo sugerido,
+  /// margen editable y matriz de variantes.
+  void _alSeleccionarProducto(ProductoModel p) {
+    setState(() {
+      _productoSeleccionado = p;
+      _costoController.text = _costoSugerido(p);
+      _margenCtrl.text =
+          p.margenGanancia > 0 ? p.margenGanancia.toStringAsFixed(2) : '';
+    });
+    _cargarVariantesDe(p);
+  }
+
+  /// CPP estimado en vivo: (stockPrev·costoPrev + cant·costoCompra) /
+  /// (stockPrev + cant). Con stockPrev==0 cae a costoCompra directamente.
+  ({double cpp, double precio}) _vistaPreviaCpp() {
+    final stockPrev = _varianteSeleccionada?.stock ??
+        _productoSeleccionado?.stockActual ??
+        0;
+    final costoPrev = _varianteSeleccionada?.costo ??
+        _productoSeleccionado?.costoPromedio ??
+        0.0;
+    final cantidad = double.tryParse(_cantidadController.text.trim()) ?? 0;
+    final costoCompra =
+        double.tryParse(_costoController.text.trim().replaceAll(',', '.')) ?? 0;
+    if (cantidad <= 0 || costoCompra <= 0) {
+      final margen = double.tryParse(
+              _margenCtrl.text.trim().replaceAll(',', '.')) ??
+          (_productoSeleccionado?.margenGanancia ?? 0);
+      final precioRef = costoCompra > 0
+          ? costoCompra * (1 + margen / 100)
+          : (_productoSeleccionado?.precioVenta ?? 0);
+      return (cpp: stockPrev > 0 ? costoPrev : costoCompra, precio: precioRef);
+    }
+    final denominador = stockPrev + cantidad;
+    final cpp = stockPrev > 0
+        ? ((stockPrev * costoPrev) + (cantidad * costoCompra)) / denominador
+        : costoCompra; // Protección stock-cero: asignación directa.
+    final margen = double.tryParse(
+            _margenCtrl.text.trim().replaceAll(',', '.')) ??
+        (_productoSeleccionado?.margenGanancia ?? 0);
+    return (cpp: cpp, precio: cpp * (1 + margen / 100));
+  }
+
   Future<void> _registrarEntrada() async {
     if (_productoSeleccionado == null) {
       ScaffoldMessenger.of(
@@ -152,6 +283,8 @@ Future<void> _cargarProductos() async {
       'detalles': [
         {
           'Producto_ID': _productoSeleccionado!.productoId,
+          if (_varianteSeleccionada != null)
+            'Variante_ID': _varianteSeleccionada!.varianteId,
           'Cantidad': cantidad,
           'Costo_Unitario': costo,
         },
@@ -246,41 +379,110 @@ const Text(
                                 '${p.skuCodigo} · ${p.nombre} (${p.stockActual})',
                                 style: const TextStyle(fontSize: 11),
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  _productoSeleccionado = p;
-                                  _costoController.text = _costoSugerido(p);
-                                });
-                              },
+                              onPressed: () => _alSeleccionarProducto(p),
                             ),
                           )
                           .toList(),
                     ),
                     const SizedBox(height: 12),
                   ],
-                  DropdownButtonFormField<ProductoModel>(
-                    initialValue: _productoSeleccionado,
-                    decoration: const InputDecoration(
-                      labelText: 'Seleccionar Producto',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _productos.map((prod) {
-                      return DropdownMenuItem<ProductoModel>(
-                        value: prod,
-                        child: Text(
-                          '${prod.skuCodigo} - ${prod.nombre} (Stock: ${prod.stockActual})',
+                  // Selector inteligente: búsqueda difusa + creación contextual
+                  // (último ítem de la lista si no hay coincidencias).
+                  Autocomplete<ProductoModel>(
+                    displayStringForOption: (p) =>
+                        '${p.skuCodigo} - ${p.nombre}',
+                    fieldViewBuilder: (context, controller, focusNode,
+                        onFieldSubmitted) {
+                      return TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Buscar producto',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.search),
                         ),
                       );
-                    }).toList(),
-onChanged: (val) {
-                      setState(() {
-                        _productoSeleccionado = val;
-                        if (val != null) {
-                          _costoController.text = _costoSugerido(val);
-                        }
-                      });
                     },
+                    optionsBuilder: (textEditingValue) {
+                      _ultimaBusqueda = textEditingValue.text;
+                      final q = textEditingValue.text.toLowerCase().trim();
+                      if (q.isEmpty) return _productos;
+                      return _productos.where((p) =>
+                          p.nombre.toLowerCase().contains(q) ||
+                          p.skuCodigo.toLowerCase().contains(q));
+                    },
+                    optionsViewBuilder: (context, onSelected, options) {
+                      final lista = options.toList();
+                      return Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          elevation: 4,
+                          borderRadius: BorderRadius.circular(8),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                                maxHeight: 260, maxWidth: 480),
+                            child: ListView(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              children: [
+                                ...lista.map((p) => ListTile(
+                                      leading: const Icon(Icons.inventory_2,
+                                          size: 20),
+                                      title: Text(
+                                          '${p.skuCodigo} - ${p.nombre}'),
+                                      subtitle: Text(
+                                          'Stock: ${p.stockActual} · \$${p.precioVenta.toStringAsFixed(2)}'),
+                                      onTap: () => onSelected(p),
+                                    )),
+                                if (lista.isEmpty)
+                                  ListTile(
+                                    leading: Icon(Icons.add_circle,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary),
+                                    title: Text(
+                                        '+ Crear nuevo producto'
+                                        '${_ultimaBusqueda.isNotEmpty ? ': $_ultimaBusqueda' : ''}'),
+                                    onTap: () {
+                                      FocusScope.of(context).unfocus();
+                                      _crearProductoRapido(_ultimaBusqueda);
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    onSelected: _alSeleccionarProducto,
                   ),
+                  const SizedBox(height: 16),
+                  // ── Selector de variante (solo si el producto las tiene)
+                  if (_cargandoVariantes)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                      child: LinearProgressIndicator(),
+                    )
+                  else if (_variantes.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _variantes.map((v) {
+                        final activa = v.varianteId == _varianteSeleccionada?.varianteId;
+                        final etiqueta = v.atributos.isEmpty
+                            ? v.sku
+                            : v.atributos.entries
+                                .map((e) => '${e.key}: ${e.value}')
+                                .join(' · ');
+                        return ChoiceChip(
+                          selected: activa,
+                          onSelected: (_) =>
+                              setState(() => _varianteSeleccionada = activa ? null : v),
+                          label: Text('$etiqueta (${v.stock})',
+                              style: const TextStyle(fontSize: 12)),
+                        );
+                      }).toList(),
+                    ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<dynamic>(
                     initialValue: _proveedorSeleccionado,
@@ -344,6 +546,7 @@ onChanged: (val) {
                       labelText: 'Cantidad Ingresada',
                       border: OutlineInputBorder(),
                     ),
+                    onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -355,9 +558,31 @@ onChanged: (val) {
                     ),
                     onChanged: (_) => setState(() {}),
                   ),
-                  // Precio sugerido al reabastecer: costo ingresado × (1 +
-                  // margen configurado del producto). Informa, no modifica
-                  // hasta guardar el producto en la pestaña correspondiente.
+                  // Margen editable + preview del CPP: muestra las fórmulas
+                  // ejecutadas por el backend al confirmar la entrada.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _margenCtrl,
+                          keyboardType: const TextInputType
+                              .numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'Margen % (aplicado al precio)',
+                            hintText: _productoSeleccionado != null &&
+                                    _productoSeleccionado!.margenGanancia > 0
+                                ? 'Heredado: ${_productoSeleccionado!.margenGanancia.toStringAsFixed(2)}%'
+                                : 'Ej. 25',
+                            border: const OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // CPP estimado en vivo: calculado sobre el stock vigente
+                  // (o de la variante seleccionada) — nunca divide por cero.
                   Builder(builder: (context) {
                     final p = _productoSeleccionado;
                     if (p == null) return const SizedBox.shrink();
@@ -365,9 +590,9 @@ onChanged: (val) {
                             _costoController.text.trim().replaceAll(',', '.')) ??
                         0;
                     if (costo <= 0) return const SizedBox.shrink();
-                    final margen = p.margenGanancia;
-                    final sugerido = costo * (1 + margen / 100);
-                    final cambio = (sugerido - p.precioVenta).abs() > 0.005;
+                    final vista = _vistaPreviaCpp();
+                    final cambio =
+                        (vista.precio - p.precioVenta).abs() > 0.005;
                     return Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Container(
@@ -384,23 +609,22 @@ onChanged: (val) {
                           runSpacing: 4,
                           children: [
                             Text(
-                              margen > 0
-                                  ? 'Precio sugerido: \$${sugerido.toStringAsFixed(2)} (margen ${margen.toStringAsFixed(2)}%)'
-                                  : 'Precio sugerido: \$${sugerido.toStringAsFixed(2)} (sin margen configurado)',
+                              'CPP estimado: \$${vista.cpp.toStringAsFixed(2)}'
+                              '${_varianteSeleccionada != null ? ' (variante)' : ''}',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: cs.onSurface,
                               ),
                             ),
-                            if (cambio)
-                              Text(
-                                'Actual: \$${p.precioVenta.toStringAsFixed(2)}${sugerido > p.precioVenta ? ' ↑' : ' ↓'}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: cs.onSurfaceVariant,
-                                ),
+                            Text(
+                              'Precio de venta (margen ${(double.tryParse(_margenCtrl.text.trim().replaceAll(',', '.')) ?? p.margenGanancia).toStringAsFixed(2)}%): \$${vista.precio.toStringAsFixed(2)}'
+                              '${cambio ? (vista.precio > p.precioVenta ? ' ↑' : ' ↓') : ''}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
                               ),
+                            ),
                           ],
                         ),
                       ),

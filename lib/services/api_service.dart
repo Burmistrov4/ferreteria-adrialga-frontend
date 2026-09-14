@@ -553,6 +553,62 @@ class ApiService {
     }
   }
 
+  /// GET /productos/:id/variantes — matriz y ejes del inventario matricial.
+  static Future<Map<String, dynamic>> getVariantesProducto(int id) async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/productos/$id/variantes'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Error al cargar las variantes del producto');
+  }
+
+  /// POST /productos/:id/variantes/bulk — creación/upsert en lote.
+  static Future<Map<String, dynamic>> crearVariantesBulk(
+    int productoId,
+    List<Map<String, dynamic>> variantes,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/productos/$productoId/variantes/bulk'),
+            headers: _headers,
+            body: jsonEncode({'variantes': variantes}),
+          )
+          .timeout(const Duration(seconds: 15));
+          _verificarSesion(response);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'error': _mensajeError(response.body)};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// PATCH /productos/variantes/:id — edición rápida inline (stock/costo/precio).
+  static Future<Map<String, dynamic>> actualizarVariante(
+    int varianteId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/productos/variantes/$varianteId'),
+            headers: _headers,
+            body: jsonEncode(data),
+          )
+          .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
+      if (response.statusCode == 200) return {'success': true};
+      return {'success': false, 'error': _mensajeError(response.body)};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   // --- PROVEEDORES E INVENTARIO ---
   static Future<List<dynamic>> getProveedores() async {
     final response = await http

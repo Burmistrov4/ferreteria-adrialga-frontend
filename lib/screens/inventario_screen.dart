@@ -4,6 +4,7 @@ import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
 import '../widgets/producto_dialog.dart';
+import '../widgets/matrix_stock_grid.dart';
 import 'categorias_screen.dart';
 
 class InventarioScreen extends StatefulWidget {
@@ -249,6 +250,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) {
         final bajoStock = prod.stockActual <= prod.stockMinimo;
         return SafeArea(
@@ -271,9 +273,24 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     '\$${prod.costoUltimo.toStringAsFixed(2)}'),
                 _filaDetalle('Margen', '${prod.margenGanancia.toStringAsFixed(1)}%'),
                 _filaDetalle(
-                  'Stock',
+                  'Stock global',
                   '${prod.stockActual} uds (mínimo ${prod.stockMinimo})',
                   color: bajoStock ? cs.error : null,
+                ),
+                const SizedBox(height: 14),
+                // Matriz de variantes en acordeón: micro-edición tactil.
+                Text('Variantes',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: cs.onSurface)),
+                const SizedBox(height: 6),
+                MatrixStockGrid(
+                  productoId: prod.productoId,
+                  skuBase: prod.skuCodigo,
+                  nombreProducto: prod.nombre,
+                  compacto: true,
+                  onCambio: _cargarDatos,
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -429,6 +446,58 @@ class _InventarioScreenState extends State<InventarioScreen> {
     );
   }
 
+  /// Matriz matricial en diálogo para escritorio: grilla cruzada completa
+  /// con scroll bidireccional y edición inline por celda.
+  void _mostrarMatrizProducto(ProductoModel prod, ColorScheme cs) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 560),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.grid_on, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Matriz de variantes · ${prod.nombre}',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Cerrar',
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: MatrixStockGrid(
+                    productoId: prod.productoId,
+                    skuBase: prod.skuCodigo,
+                    nombreProducto: prod.nombre,
+                    onCambio: _cargarDatos,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Escritorio (≥600): DataTable con scroll horizontal (columnas fijas).
   Widget _vistaTablaEscritorio(ColorScheme cs) {
     return Card(
@@ -480,6 +549,13 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        IconButton(
+                          constraints: const BoxConstraints(
+                              minWidth: 48, minHeight: 48),
+                          icon: Icon(Icons.grid_on_outlined, color: cs.tertiary),
+                          tooltip: 'Matriz de variantes',
+                          onPressed: () => _mostrarMatrizProducto(prod, cs),
+                        ),
                         IconButton(
                           constraints: const BoxConstraints(
                               minWidth: 48, minHeight: 48),

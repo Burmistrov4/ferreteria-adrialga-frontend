@@ -4,11 +4,16 @@ class CategoriaModel {
   final String? descripcion;
   final bool activo;
 
+  /// Margen sugerido (%) aplicado por defecto a los productos de la
+  /// categoría. null = vinieron sin datos o no aplica (cascada detiene).
+  final double? margenSugerido;
+
   CategoriaModel({
     required this.categoriaId,
     required this.nombreCategoria,
     this.descripcion,
     this.activo = true,
+    this.margenSugerido,
   });
 
   int get id => categoriaId;
@@ -22,6 +27,9 @@ class CategoriaModel {
           json['nombreCategoria'] ?? json['Nombre'] ?? json['nombre'] ?? '',
       descripcion: json['descripcion'] ?? json['Descripcion'],
       activo: json['activo'] ?? json['Activo'] ?? true,
+      margenSugerido: double.tryParse(
+          (json['margenSugerido'] ?? json['Margen_Sugerido'] ?? '')
+              .toString()),
     );
   }
 
