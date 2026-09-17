@@ -152,6 +152,10 @@ class FacturaDetalleDialog extends StatelessWidget {
       child: Container(
         width: esMovil ? anchoPantalla : 520,
         padding: EdgeInsets.all(esMovil ? 12 : 16),
+        // Tope de altura: en monitores altos el detalle nunca desborda.
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,6 +317,10 @@ class FacturaDetalleDialog extends StatelessWidget {
                       ],
                       const SizedBox(height: 8),
                       TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cerrar'),
                       ),
@@ -335,6 +343,10 @@ class FacturaDetalleDialog extends StatelessWidget {
                         ),
                       const SizedBox(width: 8),
                       TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cerrar'),
                       ),

@@ -105,7 +105,9 @@ static final ThemeData _darkTheme = ThemeData(
       onError: Colors.white,
       surface: Color(0xFF1E293B),
       onSurface: Color(0xFFE2E8F0),
-      onSurfaceVariant: Color(0xFFCBD5E1),
+      // Subtle-info text (fechas, subtítulos etc.): leve brillo (CBD5E1 →
+      // D9E2EF) conservando la jerarquía respecto a onSurface (E2E8F0).
+      onSurfaceVariant: Color(0xFFD9E2EF),
       outline: Color(0xFF64748B),
       outlineVariant: Color(0xFF334155),
       surfaceContainerLowest: Color(0xFF0B1220),

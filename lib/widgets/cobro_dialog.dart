@@ -2,6 +2,8 @@
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../utils/cobro_engine.dart';
+import '../utils/parseo.dart';
 
 class CobroDialog extends StatefulWidget {
   final double totalUSD;
@@ -33,14 +35,17 @@ class _CobroDialogState extends State<CobroDialog> {
 
   double get _totalVES => widget.totalUSD * widget.tasaCambio;
 
+  // Montos ingresados por el cajero, acotados a centavos exactos (regla del
+  // céntimo fantasma: toda componente se redondea ANTES de sumar, para que
+  // las divisiones por tasa nunca creen residuos binarios en la comparación).
   double get _montoUsdEfectivo =>
-      double.tryParse(_usdEfectivoController.text) ?? 0.0;
+      redondearCentavos(numD(_usdEfectivoController.text));
   double get _montoVesEfectivo =>
-      double.tryParse(_vesEfectivoController.text) ?? 0.0;
+      redondearCentavos(numD(_vesEfectivoController.text));
   double get _montoPagoMovil =>
-      double.tryParse(_pagoMovilController.text) ?? 0.0;
+      redondearCentavos(numD(_pagoMovilController.text));
   double get _montoPuntoVenta =>
-      double.tryParse(_puntoVentaController.text) ?? 0.0;
+      redondearCentavos(numD(_puntoVentaController.text));
 
   // â”€â”€ IGTF (3%): impuesto que se aplica EXCLUSIVAMENTE a los pagos en
   // divisas extranjeras (aquÃ­, el campo "Efectivo USD"). Se recalcula en
@@ -48,28 +53,30 @@ class _CobroDialogState extends State<CobroDialog> {
   // equivalencia en bolÃ­vares con la tasa BCV activa.
   final double _igtfAliquota = 0.03;
   double get _montoDivisa => _montoUsdEfectivo;
-  double get _igtfUSD => _montoDivisa * _igtfAliquota;
-  double get _igtfVES => _igtfUSD * widget.tasaCambio;
+  double get _igtfUSD => redondearCentavos(_montoDivisa * _igtfAliquota);
+  double get _igtfVES => redondearCentavos(_igtfUSD * widget.tasaCambio);
 
   // El total a cobrar incluye el IGTF cuando hay pagos en divisas.
-  double get _cargoTotalUSD => widget.totalUSD + _igtfUSD;
+  double get _cargoTotalUSD => redondearCentavos(widget.totalUSD + _igtfUSD);
 
-  double get _totalRecibidoUSD =>
-      _montoUsdEfectivo +
-      ((_montoVesEfectivo + _montoPagoMovil + _montoPuntoVenta) /
+  double get _totalRecibidoUSD => redondearCentavos(redondearCentavos(_montoUsdEfectivo) +
+      redondearCentavos(_montoVesEfectivo + _montoPagoMovil + _montoPuntoVenta) /
           widget.tasaCambio);
 
-  double get _diferenciaUSD => _totalRecibidoUSD - _cargoTotalUSD;
-  double get _diferenciaVES => _diferenciaUSD * widget.tasaCambio;
+  double get _diferenciaUSD =>
+      redondearCentavos(_totalRecibidoUSD - _cargoTotalUSD);
+  double get _diferenciaVES =>
+      redondearCentavos(_diferenciaUSD * widget.tasaCambio);
 
-  bool get _pagoCompleto => _diferenciaUSD >= -0.01;
+  bool get _pagoCompleto => _diferenciaUSD >= -kToleranciaVuelto;
 
   /// Falta por pagar: solo cuando la diferencia es negativa (deuda); >0 deshabilita
-  /// el pago. Los remanentes â‰¤ 0.01 USD se toleran por precisiÃ³n de coma flotante.
+  /// el pago. Tolerancia de medio centavo USD: los "centimos fantasma" de la
+  /// aritmética binaria se absorben, pero un sub-centavo real bloquea el cobro.
   double get _faltaPorPagar => _diferenciaUSD < 0 ? _diferenciaUSD.abs() : 0.0;
 
-  /// Habilita el botÃ³n CONFIRMAR PAGO Ãºnicamente cuando no hay deuda.
-  bool get _habilitarPago => _faltaPorPagar <= 0.01;
+  /// Habilita el botón CONFIRMAR PAGO únicamente cuando no hay deuda.
+  bool get _habilitarPago => _faltaPorPagar <= kToleranciaVuelto;
 
   void _completarMontoExactoUSD() {
     setState(() {

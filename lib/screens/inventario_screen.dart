@@ -365,11 +365,13 @@ class _InventarioScreenState extends State<InventarioScreen> {
       itemBuilder: (context, index) {
         final prod = _productosFiltrados[index];
         final bajoStock = prod.stockActual <= prod.stockMinimo;
-        return Card(
-          margin: EdgeInsets.zero,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => _mostrarDetalleProducto(context, prod),
+          return Card(
+            margin: EdgeInsets.zero,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _mostrarDetalleProducto(context, prod),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -440,6 +442,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 ],
               ),
             ),
+              ),
           ),
         );
       },

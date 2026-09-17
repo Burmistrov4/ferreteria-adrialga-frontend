@@ -609,6 +609,30 @@ class ApiService {
     }
   }
 
+  /// DELETE /productos/variantes/:id — soft-delete: la variante se archiva
+  /// (Activo=false); nunca se borra físicamente para preservar el historial.
+  static Future<Map<String, dynamic>> eliminarVariante(int varianteId) async {
+    try {
+      final response = await http
+          .delete(Uri.parse('$baseUrl/productos/variantes/$varianteId'),
+              headers: _headers)
+          .timeout(const Duration(seconds: 10));
+          _verificarSesion(response);
+      if (response.statusCode == 200) return {'success': true};
+      try {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'error': body['message']?.toString() ?? response.body.toString(),
+        };
+      } catch (_) {
+        return {'success': false, 'error': response.body.toString()};
+      }
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   // --- PROVEEDORES E INVENTARIO ---
   static Future<List<dynamic>> getProveedores() async {
     final response = await http

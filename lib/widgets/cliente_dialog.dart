@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -171,26 +171,49 @@ class _ClienteDialogState extends State<ClienteDialog>
 
     setState(() => _isConsultingSeniat = true);
     final res = await ApiService.consultarSeniat(_tipoDoc, numDoc);
+    if (!mounted) return;
     setState(() => _isConsultingSeniat = false);
 
     if (res['success'] == true) {
       setState(() {
         _nombreController.text = res['nombre'] ?? '';
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('¡Datos del SENIAT cargados correctamente!'),
-          ),
-        );
-      }
-    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res['error'] ?? 'No se halló información en SENIAT'),
+        const SnackBar(
+          content: Text('¡Datos del SENIAT cargados correctamente!'),
         ),
       );
+      return;
     }
+    // 404: no existe en el registro | Error de red/timeout: mensaje con icono
+    final era404 = (res['error']?.toString() ?? '').contains('404') ||
+        (res['error']?.toString() ?? '').toLowerCase().contains('no se ha');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: era404
+            ? Theme.of(context).colorScheme.error
+            : Theme.of(context).colorScheme.tertiary,
+        content: Row(
+          children: [
+            Icon(
+              era404 ? Icons.error_outline : Icons.wifi_off,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                era404
+                    ? 'SENIAT no tiene datos para esa cédula/RIF.'
+                    : (res['error'] ??
+                        'Sin conexión con el servicio SENIAT. Intente de nuevo.'),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _guardarYSeleccionar() async {
@@ -511,7 +534,7 @@ class _ClienteDialogState extends State<ClienteDialog>
                                   ),
                                 )
                               : const Icon(Icons.cloud_download, size: 18),
-                          label: const Text('SENIAT'),
+                          label: Text(_isConsultingSeniat ? 'Buscando…' : 'SENIAT'),
                         ),
                       ],
                     ),
@@ -583,7 +606,7 @@ class _ClienteDialogState extends State<ClienteDialog>
                                   ),
                                 )
                               : const Icon(Icons.cloud_download, size: 18),
-                          label: const Text('SENIAT'),
+                          label: Text(_isConsultingSeniat ? 'Buscando…' : 'SENIAT'),
                         ),
                       ),
                     ],

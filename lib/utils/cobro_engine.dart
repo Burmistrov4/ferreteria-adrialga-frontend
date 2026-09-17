@@ -5,7 +5,13 @@
 /// Constantes fiscales venezolanas (SENIAT).
 const double kIvaAliquota = 0.16;
 const double kIgtfAliquota = 0.03;
-const double kToleranciaVuelto = 0.01; // Margen de 1 centavo USD
+const double kToleranciaVuelto = 0.005; // Medio centavo USD (céntimo fantasma)
+
+/// Redondeo a centavos (unidad monetaria mínima). Usa la representación
+/// decimal de Dart (toStringAsFixed), la cual implementa el redondeo
+/// "half-even" correcto sobre dígitos decimales — evita el sesgo binario
+/// de multiplicar por 100 (donde 1.005 vive como 1.004999…9 en memoria).
+double redondearCentavos(double v) => double.parse(v.toStringAsFixed(2));
 
 /// Resultado inmutable de un calculo de cobro.
 class ResultadoCobro {
@@ -49,13 +55,20 @@ class ResultadoCobro {
   double get diferenciaVES => diferenciaUSD * tasa;
 
   /// True si el pago cubre el cargo total (tolerancia de 1 centavo USD).
-  bool get pagoCompleto => diferenciaUSD >= -kToleranciaVuelto;
+  bool get pagoCompleto =>
+      redondearCentavos(diferenciaUSD) >= -kToleranciaVuelto;
 
-  /// Vuelto a devolver en USD (0 si hubo deficit).
-  double get vueltoUSD => diferenciaUSD > 0 ? diferenciaUSD : 0.0;
+  /// Vuelto a devolver en USD (0 si hubo deficit), redondeado a centavos.
+  double get vueltoUSD {
+    final v = redondearCentavos(diferenciaUSD);
+    return v > 0 ? v : 0.0;
+  }
 
   /// Vuelto expresado en bolivares (0 si hubo deficit).
-  double get vueltoVES => diferenciaVES > 0 ? diferenciaVES : 0.0;
+  double get vueltoVES {
+    final v = redondearCentavos(diferenciaVES);
+    return v > 0 ? v : 0.0;
+  }
 
   const ResultadoCobro({
     required this.subtotal,

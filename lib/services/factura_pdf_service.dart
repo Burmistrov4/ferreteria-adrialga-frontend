@@ -163,7 +163,9 @@ class FacturaPdfService {
             data: f.detalles.map((d) {
               return [
                 d.productoSkU,
-                d.productoNombre,
+                d.varianteEtiqueta != null
+                    ? '${d.productoNombre} (${d.varianteEtiqueta})'
+                    : d.productoNombre,
                 '${d.cantidad}',
                 _fmt(d.precioUnitario),
                 _fmt(d.subtotal),
@@ -259,7 +261,7 @@ class FacturaPdfService {
           ),
           pw.SizedBox(height: 24),
           pw.Text(
-            '¡Gracias por su compra!',
+            cfg.mensajePie.isNotEmpty ? cfg.mensajePie : '¡Gracias por su compra!',
             style: pw.TextStyle(
               fontSize: 12,
               color: _gris,

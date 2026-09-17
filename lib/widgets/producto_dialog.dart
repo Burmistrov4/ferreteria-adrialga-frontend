@@ -291,40 +291,48 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       labelText: 'Descripción',
                     ),
                   ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          initialValue: _selectedCategoriaId,
-                          decoration: const InputDecoration(
-                            labelText: 'Categoría *',
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          // Selector escalable con búsqueda integrada:
+                          // el autocompletar filtra localmente al escribir.
+                          child: Autocomplete<CategoriaModel>(
+                            displayStringForOption: (c) => c.nombreCategoria,
+                            optionsBuilder: (textEditingValue) {
+                              final q = textEditingValue.text.toLowerCase().trim();
+                              if (q.isEmpty) return _categorias;
+                              return _categorias.where((c) =>
+                                  c.nombreCategoria.toLowerCase().contains(q));
+                            },
+                            fieldViewBuilder: (context, controller, focusNode, onSubmit) =>
+                                TextField(
+                                  controller: controller
+                                    ..text = _selectedCategoriaId == null
+                                        ? controller.text
+                                        : (_categorias
+                                                .where((c) =>
+                                                    c.categoriaId == _selectedCategoriaId)
+                                                .firstOrNull
+                                                ?.nombreCategoria ??
+                                            controller.text),
+                                  focusNode: focusNode,
+                                  decoration: InputDecoration(
+                                    labelText: 'Categoría *',
+                                    suffixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
+                                  ),
+                                ),
+                            onSelected: (cat) {
+                              setState(() => _selectedCategoriaId = cat.categoriaId);
+                              final ms = cat.margenSugerido;
+                              if (ms != null && ms > 0 && _margen == 0) {
+                                _margenController.text = ms.toStringAsFixed(2);
+                                _recalcularPrecioDesdeCostoMargen();
+                              }
+                            },
                           ),
-                          items: _categorias.map((cat) {
-                            return DropdownMenuItem<int>(
-                              value: cat.categoriaId,
-                              child: Text(cat.nombreCategoria),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            // Herencia de margen de la categoría: si el campo
-                            // Margen % está vacío o en 0, se pre-rellena con el
-                            // margen_sugerido de la categoría elegida.
-                            setState(() => _selectedCategoriaId = val);
-                            final cat = _categorias
-                                .where((c) => c.categoriaId == val)
-                                .firstOrNull;
-                            final ms = cat?.margenSugerido;
-                            if (ms != null && ms > 0 && _margen == 0) {
-                              _margenController.text = ms.toStringAsFixed(2);
-                              _recalcularPrecioDesdeCostoMargen();
-                            }
-                          },
-                          validator: (val) =>
-                              val == null ? 'Seleccione una categoría' : null,
                         ),
-                      ),
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: IconButton(

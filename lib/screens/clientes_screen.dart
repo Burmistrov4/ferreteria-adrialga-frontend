@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 import '../services/api_service.dart';
 import '../widgets/cliente_dialog.dart';
+import '../widgets/hover_tile.dart';
 
 class ClientesScreen extends StatefulWidget {
   const ClientesScreen({super.key});
@@ -155,7 +156,9 @@ class _ClientesScreenState extends State<ClientesScreen> {
                         final cliente = clientesFiltrados[index];
                         return Card(
                           elevation: 2,
-                          child: ListTile(
+                          child: HoverTile(
+                            onTap: () => _abrirDialogoCliente(cliente),
+                            child: ListTile(
                             leading: CircleAvatar(
                               child: Text(
                                 cliente.nombreRazonSocial.isNotEmpty
@@ -194,6 +197,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
                               ],
                             ),
                           ),
+                            ),
                         );
                       },
                     ),

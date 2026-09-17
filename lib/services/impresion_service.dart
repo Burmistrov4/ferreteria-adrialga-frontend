@@ -140,7 +140,11 @@ static String _truncar(String s, int max) =>
                     ),
                     pw.Expanded(
                       child: pw.Text(
-                          _truncar(d.productoNombre, es57 ? 26 : 42),
+                          _truncar(
+                              d.varianteEtiqueta != null
+                                  ? '${d.productoNombre} (${d.varianteEtiqueta})'
+                                  : d.productoNombre,
+                              es57 ? 26 : 42),
                           overflow: pw.TextOverflow.clip,
                           style: const pw.TextStyle(fontSize: 8.5)),
                     ),
@@ -192,7 +196,11 @@ static String _truncar(String s, int max) =>
                 )),
           ],
           pw.SizedBox(height: 10),
-          _ctr('¡Gracias por su compra!', size: 9, bold: true),
+          _ctr(
+            cfg.mensajePie.isNotEmpty ? cfg.mensajePie : '¡Gracias por su compra!',
+            size: 9,
+            bold: true,
+          ),
           _ctr('Adrialga · Sistema POS', size: 7, color: PdfColors.grey700),
         ],
       ),

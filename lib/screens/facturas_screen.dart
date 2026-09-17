@@ -239,8 +239,10 @@ class _FacturasScreenState extends State<FacturasScreen> {
                               return Card(
                                 elevation: 1,
                                 margin: const EdgeInsets.symmetric(vertical: 4),
-                                child: ListTile(
-                                  onTap: () => _verDetalle(f),
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: ListTile(
+                                    onTap: () => _verDetalle(f),
                                   leading: CircleAvatar(
                                     backgroundColor: cs.primaryContainer,
                                     child: Icon(
@@ -283,6 +285,7 @@ class _FacturasScreenState extends State<FacturasScreen> {
                                             ),
                                       ),
                                     ],
+                                  ),
                                   ),
                                 ),
                               );

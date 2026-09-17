@@ -114,6 +114,12 @@ class DetalleFacturaModel {
   final double precioUnitario;
   final double subtotal;
 
+  /// SKU de la variante vendida (null = producto lineal).
+  final String? varianteSku;
+
+  /// Etiqueta de atributos de la variante, ej: "Color: Gris · Talla: M".
+  final String? varianteEtiqueta;
+
   DetalleFacturaModel({
     required this.detalleId,
     required this.productoId,
@@ -122,6 +128,8 @@ class DetalleFacturaModel {
     required this.cantidad,
     required this.precioUnitario,
     required this.subtotal,
+    this.varianteSku,
+    this.varianteEtiqueta,
   });
 
   static double _d(dynamic v) =>
@@ -130,6 +138,20 @@ class DetalleFacturaModel {
   static String _s(dynamic v) => (v ?? '').toString();
 
   factory DetalleFacturaModel.fromJson(Map<String, dynamic> json) {
+    // Variante embebida: { SKU_Variante, atributos: [{Atributo, Valor}, ...] }
+    final vp = json['producto_variantes'];
+    String? sku;
+    String? etiqueta;
+    if (vp is Map) {
+      sku = _s(vp['SKU_Variante']);
+      final attrs = vp['atributos'];
+      if (attrs is List && attrs.isNotEmpty) {
+        etiqueta = attrs
+            .map((a) => a is Map ? '${_s(a['Atributo'])}: ${_s(a['Valor'])}' : '')
+            .where((s) => s != '')
+            .join(' · ');
+      }
+    }
     return DetalleFacturaModel(
       detalleId: _i(json['Detalle_ID'] ?? json['detalleId'] ?? json['id']),
       productoId: _i(json['Producto_ID'] ?? json['productoId']),
@@ -150,6 +172,8 @@ class DetalleFacturaModel {
       subtotal: _d(
         json['Subtotal'] ?? json['subtotal'] ?? json['sub_total'],
       ),
+      varianteSku: (sku?.isNotEmpty ?? false) ? sku : null,
+      varianteEtiqueta: (etiqueta?.isNotEmpty ?? false) ? etiqueta : null,
     );
   }
 }

@@ -102,18 +102,27 @@ class MatrixStockGridState extends State<MatrixStockGrid> {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Stock'),
               ),
+              const SizedBox(height: 8),
               TextField(
                 controller: costoCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Costo (\$)'),
               ),
+              const SizedBox(height: 8),
               TextField(
                 controller: precioCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Precio (\$)'),
+                decoration: InputDecoration(
+                  labelText: 'Precio (\$)',
+                  helperText: 'Precio de venta final',
+                  filled: true,
+                  fillColor:
+                      Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                ),
               ),
+              const SizedBox(height: 8),
               TextField(
                 controller: margenCtrl,
                 keyboardType:
@@ -124,6 +133,9 @@ class MatrixStockGridState extends State<MatrixStockGrid> {
                   hintText: v.margenPropio == null
                       ? 'Heredado: ${v.margenEfectivo.toStringAsFixed(2)}%'
                       : null,
+                  filled: true,
+                  fillColor:
+                      Theme.of(ctx).colorScheme.secondaryContainer,
                 ),
               ),
             ],

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/cliente_model.dart';
 import '../models/factura_model.dart';
 import '../models/producto_model.dart';
+import '../models/variante_model.dart';
 import '../services/api_service.dart';
 import '../services/impresion_service.dart';
 import '../services/session_guard.dart';
@@ -13,11 +14,29 @@ import '../widgets/cobro_dialog.dart';
 
 class CartItem {
   final ProductoModel producto;
+
+  /// Variante exacta vendida (null = producto lineal). Aplica precio/stock
+  /// propios de la combinación: la transacción registra el SKU variante.
+  final ProductoVariante? variante;
   int cantidad;
 
-  CartItem({required this.producto, this.cantidad = 1});
+  CartItem({required this.producto, this.variante, this.cantidad = 1});
 
-  double get subtotal => producto.precioVenta * cantidad;
+  /// Precio cobrado: el de la variante si existe, si no el del producto.
+  double get precioVentaEfectivo => variante?.precio ?? producto.precioVenta;
+
+  double get subtotal => precioVentaEfectivo * cantidad;
+
+  /// Nombre para el carrito/ticket: "Lámpara LED · Color: Gris".
+  String get nombreMostrado {
+    if (variante == null || variante!.atributos.isEmpty) {
+      return producto.nombre;
+    }
+    final attrs = variante!.atributos.entries
+        .map((e) => '${e.key}: ${e.value}')
+        .join(' · ');
+    return '${producto.nombre} ($attrs)';
+  }
 }
 
 class PosScreen extends StatefulWidget {
@@ -140,6 +159,9 @@ class _PosScreenState extends State<PosScreen> {
   /// (respaldo automático si el JWT expira a mitad de una venta).
   void _sincronizarRespaldoCarrito() {
     SessionGuard.carritoActual = _carrito
+        // Ítems de matriz no se respaldan: su stock/precio pudo cambiar tras
+        // cortes de sesión y exige re-selección (regla de seguridad).
+        .where((i) => i.variante == null)
         .map((i) => {'producto': i.producto.toJson(), 'cantidad': i.cantidad})
         .toList();
   }
@@ -201,10 +223,36 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
-  void _agregarAlCarrito(ProductoModel prod) {
+  /// Caché de matrices por producto (un GET por producto por sesión del POS).
+  final Map<int, MatrizVariantes> _matricesCache = {};
+
+  void _agregarAlCarrito(ProductoModel prod) async {
+    // Productos matriciales: si tiene más de una variante (o atributos),
+    // se abre el selector de combinación antes de tocar el carrito.
+    try {
+      final matriz = _matricesCache[prod.productoId] ??= MatrizVariantes
+          .fromJson(await ApiService.getVariantesProducto(prod.productoId));
+      // Solo se interviene cuando hay matriz REAL (2+ variantes o atributos):
+      // la variante "por defecto" del backfill se trata como venta lineal.
+      final combinatorias = matriz.matriz
+          .where((v) => v.atributos.isNotEmpty || matriz.matriz.length > 1)
+          .toList();
+      if (matriz.ejes.isNotEmpty && combinatorias.length > 1) {
+        final elegida = await _seleccionarVariante(prod, combinatorias);
+        if (elegida == null) return;
+        _agregarVarianteAlCarrito(prod, elegida);
+        return;
+      }
+    } catch (_) {
+      // Sin matriz consultable (sin conexión puntual): continuar lineal.
+    }
+    _agregarLineal(prod);
+  }
+
+  void _agregarLineal(ProductoModel prod) {
     setState(() {
       final index = _carrito.indexWhere(
-        (item) => item.producto.productoId == prod.productoId,
+        (item) => item.producto.productoId == prod.productoId && item.variante == null,
       );
       if (index >= 0) {
         if (_carrito[index].cantidad < prod.stockActual) {
@@ -225,12 +273,83 @@ class _PosScreenState extends State<PosScreen> {
     _sincronizarRespaldoCarrito();
   }
 
-  void _actualizarCantidadManual(CartItem item, int nuevaCantidad) {
+  void _agregarVarianteAlCarrito(ProductoModel prod, ProductoVariante v) {
     setState(() {
-      if (nuevaCantidad > item.producto.stockActual) {
-        item.cantidad = item.producto.stockActual;
+      final index = _carrito.indexWhere(
+        (item) => item.variante?.varianteId == v.varianteId,
+      );
+      if (index >= 0) {
+        if (_carrito[index].cantidad < v.stock) {
+          _carrito[index].cantidad++;
+        } else {
+          _mostrarSnackBar('Stock máximo de la combinación (${v.stock})');
+        }
+      } else if (v.stock > 0) {
+        _carrito.add(CartItem(producto: prod, variante: v, cantidad: 1));
+      } else {
+        _mostrarSnackBar('Combinación sin stock disponible');
+      }
+    });
+    _sincronizarRespaldoCarrito();
+  }
+
+  /// Selector rápido de variante (care debajo del detalle del producto):
+  /// chips con atributo + stock; cierra al elegir o cancelar.
+  Future<ProductoVariante?> _seleccionarVariante(
+    ProductoModel prod,
+    List<ProductoVariante> opciones,
+  ) {
+    return showDialog<ProductoVariante>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: Text(
+            prod.nombre,
+            style: const TextStyle(fontSize: 15),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          content: SingleChildScrollView(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: opciones.map((v) {
+                final attrs = v.atributos.entries
+                    .map((e) => '${e.key}: ${e.value}')
+                    .join(' · ');
+                final agotada = v.stock <= 0;
+                return ChoiceChip(
+                  selected: false,
+                  label: Text(
+                    '${attrs.isEmpty ? v.sku : attrs} (${v.stock})',
+                    style: TextStyle(fontSize: 12, color: agotada ? cs.error : null),
+                  ),
+                  onSelected: agotada
+                      ? null
+                      : (sel) { if (sel) Navigator.pop(ctx, v); },
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _actualizarCantidadManual(CartItem item, int nuevaCantidad) {
+    final stockLimite = item.variante?.stock ?? item.producto.stockActual;
+    setState(() {
+      if (nuevaCantidad > stockLimite) {
+        item.cantidad = stockLimite;
         _mostrarSnackBar(
-          'Ajustado al stock máximo disponible (${item.producto.stockActual})',
+          'Ajustado al stock máximo de la combinación ($stockLimite)',
         );
       } else if (nuevaCantidad <= 0) {
         _carrito.remove(item);
@@ -333,8 +452,10 @@ class _PosScreenState extends State<PosScreen> {
             .map(
               (item) => {
                 "Producto_ID": item.producto.productoId,
+                if (item.variante != null)
+                  "Variante_ID": item.variante!.varianteId,
                 "Cantidad": item.cantidad,
-                "Precio_Unitario": item.producto.precioVenta,
+                "Precio_Unitario": item.precioVentaEfectivo,
               },
             )
             .toList(),
@@ -943,7 +1064,7 @@ class _CartItemTileState extends State<_CartItemTile> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.item.producto.nombre,
+                      widget.item.nombreMostrado,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -952,7 +1073,7 @@ class _CartItemTileState extends State<_CartItemTile> {
                       ),
                     ),
                     Text(
-                      '\$${widget.item.producto.precioVenta.toStringAsFixed(2)} c/u = \$${widget.item.subtotal.toStringAsFixed(2)}',
+                      '\$${widget.item.precioVentaEfectivo.toStringAsFixed(2)} c/u = \$${widget.item.subtotal.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 11,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,

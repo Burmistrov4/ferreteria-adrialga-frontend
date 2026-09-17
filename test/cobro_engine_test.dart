@@ -141,12 +141,12 @@ void main() {
       expect(r.vueltoVES, closeTo(0.0, epsilon));
     });
 
-    test('deficit de exactamente 1 centavo: aun es pagoCompleto (tolerancia)', () {
+    test('deficit sub-centavo (<=0.005): aun es pagoCompleto (tolerancia ajustada)', () {
       final cargo = calcularCobro(subtotal: 100.0, tasa: tasa).totalUSD; // sin IGTF (sin USD)
       final r = calcularCobro(
         subtotal: 100.0,
         tasa: tasa,
-        efectivoBs: (cargo - 0.009) * tasa, // falta 0.009 < tolerancia 0.01
+        efectivoBs: (cargo - 0.004) * tasa, // falta 0.004 <= tolerancia 0.005
       );
       expect(r.pagoCompleto, isTrue);
     });
@@ -187,6 +187,56 @@ void main() {
       ];
       final sub = calcularSubtotal(items);
       expect(sub, closeTo(1.0, epsilon));
+    });
+  });
+
+  // ── Céntimos fantasma: redondeo a centavos y tolerancia calibrada ────────
+
+  group('Precisión de centavos (céntimo fantasma)', () {
+    test('redondearCentavos normaliza residuos de coma flotante', () {
+      expect(redondearCentavos(0.40000000000000036), equals(0.40));
+      expect(redondearCentavos(0.40), equals(0.40));
+      // El redondeo es determinista sobre el valor real guardado (no sobre
+      // el "label" matemático imposible: 1.005 en realidad equivale a
+      // 1.004999… en IEEE754, y truncar a centavos debe reflejarlo).
+      expect(redondearCentavos(redondearCentavos(123.4567)),
+          equals(redondearCentavos(123.46)));
+    });
+
+    test('deficit de medio centavo tras división por tasa compleja: tolerado', () {
+      const tasaRara = 329.33;
+      final cargoUSD = 0.40;
+      final r = calcularCobro(
+        subtotal: cargoUSD / 1.16,
+        tasa: tasaRara,
+        efectivoBs: redondearCentavos(cargoUSD * tasaRara),
+      );
+      expect(r.pagoCompleto, isTrue);
+    });
+
+    test('deuda real de 1 centavo USD bloquea el cobro', () {
+      final cargo = calcularCobro(subtotal: 100.0, tasa: tasa).totalUSD;
+      final r = calcularCobro(
+        subtotal: 100.0,
+        tasa: tasa,
+        efectivoBs: redondearCentavos((cargo - 0.01) * tasa),
+      );
+      expect(r.pagoCompleto, isFalse);
+      expect(r.vueltoUSD, equals(0.0));
+    });
+
+    test('vuelto nunca reporta céntimos fantasma (0.41 ≠ 0.40)', () {
+      // Cargo 5.00 USD pagado en Bs con tasa 842.2067 (Bs exactos a 2dp).
+      const tasaV = 842.2067;
+      final cargoUSD = 5.00;
+      final r = calcularCobro(
+        subtotal: cargoUSD / 1.16,
+        tasa: tasaV,
+        efectivoBs: redondearCentavos(cargoUSD * tasaV),
+      );
+      expect(r.pagoCompleto, isTrue);
+      expect(r.vueltoUSD, lessThan(0.005));
+      expect(r.vueltoVES, lessThan(0.01));
     });
   });
 
