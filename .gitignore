@@ -44,3 +44,7 @@ app.*.map.json
 android/key.properties
 *.keystore
 *.jks
+
+# Build artifacts del frontend (producción local/web) — no se versionan
+build/
+.deploy-pages/
