@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 import '../models/factura_model.dart';
 import 'configuracion_service.dart';
 import 'download_service.dart';
+import 'pdf_theme.dart';
 
 /// Genera, imprime y guarda facturas en formato PDF.
 class FacturaPdfService {
@@ -43,7 +44,9 @@ class FacturaPdfService {
     // Datos legales de la tienda desde la configuración persistida
     // (backend /api/configuracion, caché en memoria, fallback offline).
     final cfg = await ConfiguracionService.obtener();
-    final doc = pw.Document();
+    // Fuente local (Roboto, tildes y biglama sanos) para compatibilidad universal offline.
+    final tema = await PdfTheme.regular();
+    final doc = pw.Document(theme: tema);
 
     doc.addPage(
       pw.MultiPage(

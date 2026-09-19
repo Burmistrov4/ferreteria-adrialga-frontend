@@ -27,6 +27,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   final _direccionCtrl = TextEditingController();
   final _telefonoCtrl = TextEditingController();
   final _pieCtrl = TextEditingController();
+  final _margenDefCtrl = TextEditingController();
   bool _guardandoEmpresa = false;
   bool _empresaCargada = false;
 
@@ -44,6 +45,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _direccionCtrl.dispose();
     _telefonoCtrl.dispose();
     _pieCtrl.dispose();
+    _margenDefCtrl.dispose();
     super.dispose();
   }
 
@@ -57,6 +59,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         _direccionCtrl.text = cfg.direccion;
         _telefonoCtrl.text = cfg.telefono;
         _pieCtrl.text = cfg.mensajePie;
+        _margenDefCtrl.text = cfg.margenDefecto.toStringAsFixed(2);
         _empresaCargada = true;
       });
     } catch (_) {
@@ -74,6 +77,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       ));
       return;
     }
+    final base = double.tryParse(
+            _margenDefCtrl.text.trim().replaceAll(',', '.')) ??
+        -1;
+    if (base < 0 || base > 1000) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Margen por defecto debe estar entre 0 y 1000 %'),
+      ));
+      return;
+    }
     setState(() => _guardandoEmpresa = true);
     final res = await ApiService.updateConfiguracionTienda({
       'nombre': nombre,
@@ -81,6 +93,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       'direccion': direccion,
       'telefono': _telefonoCtrl.text.trim(),
       'mensajePie': _pieCtrl.text.trim(),
+      'margenDefecto': base,
     });
     if (!mounted) return;
     setState(() => _guardandoEmpresa = false);
@@ -275,6 +288,16 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Mensaje al pie del ticket',
                         hintText: 'Ej.: ¡Gracias por su compra!',
+                      ),
+                    ),
+                    TextField(
+                      controller: _margenDefCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Margen de ganancia por defecto (%)',
+                        helperText:
+                            'Se aplica en productos/variantes sin margen propio',
                       ),
                     ),
                     const SizedBox(height: 12),

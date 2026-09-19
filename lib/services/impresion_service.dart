@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 
 import '../models/factura_model.dart';
 import 'configuracion_service.dart';
+import 'pdf_theme.dart';
 
 /// Motor de impresión térmica de tickets (formato 80mm).
 ///
@@ -62,7 +63,10 @@ static String _truncar(String s, int max) =>
     double anchoMm = 80,
   }) async {
     final cfg = await ConfiguracionService.obtener();
-    final doc = pw.Document();
+    // Tema robusto offline: caracteres especiales del español y de moneda
+    // (?, tildes, ₵?) seguros en thermal/raster mediante Roboto embutida.
+    final tema = await PdfTheme.regular();
+    final doc = pw.Document(theme: tema);
     final es57 = anchoMm < 70;
 
     doc.addPage(

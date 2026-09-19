@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
+import '../services/configuracion_service.dart';
 import 'variantes_tab.dart';
 
 class ProductoDialog extends StatefulWidget {
@@ -38,6 +39,13 @@ class _ProductoDialogState extends State<ProductoDialog> {
   /// el precio (o viceversa), se evita que el listener del objetivo dispare
   /// un segundo cálculo (overflow de pila por escritura cíclica).
   bool _calculando = false;
+
+  /// Agencia del usuario: true cuando el usuario editó el margen a mano;
+  /// evita que la inyección automática le pise su elección.
+  bool _margenEditadoManual = false;
+
+  /// Margen efectivo al abrir el formulario: cascada Producto > Categoría > Global.
+  double? _margenInicialSugerido;
 
   @override
   void initState() {
@@ -81,8 +89,52 @@ class _ProductoDialogState extends State<ProductoDialog> {
     // Reactividad precio ⇄ margen: al editar costo o margen se recalcula el
     // precio sugerido; al editar el precio directo se deriva el margen.
     _costoController.addListener(_recalcularPrecioDesdeCostoMargen);
-    _margenController.addListener(_recalcularPrecioDesdeCostoMargen);
+    // Campo vacío o cero = "aplica cascada" (Margen Defecto de Configuración).
+    _margenController.addListener(() {
+      // Detectar si el usuario modificó el campo margen manualmente.
+      // (es el único listener del campo que no lleva _calculando)
+      final limpio = _margenController.text.trim();
+      if (limpio.isNotEmpty &&
+          limpio != (_margenInicialSugerido?.toStringAsFixed(2) ?? '') &&
+          limpio != (widget.producto?.margenGanancia.toStringAsFixed(2) ?? '0.00')) {
+        _margenEditadoManual = true;
+      }
+      _recalcularPrecioDesdeCostoMargen();
+    });
     _precioController.addListener(_recalcularMargenDesdePrecio);
+
+    // Regla inicial: cascada Producto > Categoría > Config. Solo nuevo.
+    if (widget.producto == null && _margen == 0) {
+      _aplicarMargenPorCascada();
+    }
+  }
+
+  /// Inyección automática del margen por cascada (solo si el usuario aún no
+  /// toca el campo de margen). Categoría > Configuración global.
+  Future<void> _aplicarMargenPorCascada() async {
+    if (_margenEditadoManual) return;
+    // 1. Categoría
+    final catId = _selectedCategoriaId;
+    if (catId != null) {
+      final cat = _categorias
+          .where((c) => c.categoriaId == catId)
+          .firstOrNull;
+      final ms = cat?.margenSugerido;
+      if (ms != null && ms > 0) {
+        // Sin setState: el texto se escribe directamente en el controller
+        // (es una entrada solitaria, el setState lo dispara el listener).
+        _margenController.text = ms.toStringAsFixed(2);
+        _margenInicialSugerido = ms;
+        return;
+      }
+    }
+    // 2. Global de tienda
+    try {
+      final cfg = await ConfiguracionService.obtener();
+      if (!mounted || cfg.margenDefecto <= 0) return;
+      _margenController.text = cfg.margenDefecto.toStringAsFixed(2);
+      _margenInicialSugerido = cfg.margenDefecto;
+    } catch (_) {}
   }
 
   double get _costo => double.tryParse(_costoController.text.replaceAll(',', '.')) ?? 0;
@@ -325,8 +377,11 @@ class _ProductoDialogState extends State<ProductoDialog> {
                             onSelected: (cat) {
                               setState(() => _selectedCategoriaId = cat.categoriaId);
                               final ms = cat.margenSugerido;
-                              if (ms != null && ms > 0 && _margen == 0) {
+                              // Cascada por categoría: aplica SOLO si el usuario
+                              // no editó el margen a mano.
+                              if (ms != null && ms > 0 && !_margenEditadoManual) {
                                 _margenController.text = ms.toStringAsFixed(2);
+                                _margenInicialSugerido = ms;
                                 _recalcularPrecioDesdeCostoMargen();
                               }
                             },
