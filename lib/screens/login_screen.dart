@@ -15,10 +15,32 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passController = TextEditingController();
   bool _loading = false;
 
+  // Selector de entorno: Producción (Railway) o Local (backend XAMPP en LAN).
+  bool _usarLocal = false;
+  final _ipController = TextEditingController(); // ej. 192.168.98.153
+
+  @override
+  void initState() {
+    super.initState();
+    // Restaurar la selección si la app ya tenía un runtime guardado.
+    ApiService.loadBaseUrlRuntime().then((_) {
+      if (!mounted) return;
+      final c = ApiService.ultimoBaseUrlRuntime;
+      if (c != null && c.startsWith('http://192.')) {
+        setState(() {
+          _usarLocal = true;
+          _ipController.text =
+              c.replaceAll('http://', '').replaceAll(':3000/api', '');
+        });
+      }
+    });
+  }
+
   @override
   void dispose() {
     _userController.dispose();
     _passController.dispose();
+    _ipController.dispose();
     super.dispose();
   }
 
@@ -36,6 +58,28 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _loading = true);
+
+    // Si está en modo local, fija la URL base al momento del login y persiste
+    // en disco (para no requerir reingresar la IP cada vez que se abra la app).
+    if (_usarLocal) {
+      final ip = _ipController.text.trim();
+      if (ip.isEmpty) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ingresa la IP de la computadora (ej. 192.168.98.153)'),
+          ),
+        );
+        return;
+      }
+      final url = ip.startsWith('http')
+          ? ip.trim()
+          : 'http://$ip:3000/api';
+      ApiService.setBaseUrlRuntime(url);
+    } else {
+      ApiService.setBaseUrlRuntime(null); // producción por defecto
+    }
+
     final success = await ApiService.login(user, pass);
 
     if (!mounted) return;
@@ -114,6 +158,39 @@ class _LoginScreenState extends State<LoginScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    // ── Selector de entorno (para pruebas locales por LAN) ──
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(
+                          value: false,
+                          label: Text('Producción'),
+                          icon: Icon(Icons.cloud_done),
+                        ),
+                        ButtonSegment(
+                          value: true,
+                          label: Text('Local Wi-Fi'),
+                          icon: Icon(Icons.wifi),
+                        ),
+                      ],
+                      selected: {_usarLocal},
+                      onSelectionChanged: (s) =>
+                          setState(() => _usarLocal = s.first),
+                    ),
+                    if (_usarLocal) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _ipController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'IP de esta laptop/servidor',
+                          hintText: '192.168.98.153',
+                          prefixIcon: Icon(Icons.wifi_tethering),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,

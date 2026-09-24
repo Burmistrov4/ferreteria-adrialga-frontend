@@ -7,6 +7,7 @@ import 'screens/login_screen.dart';
 import 'services/api_service.dart';
 import 'services/session_guard.dart';
 import 'services/shortcut_service.dart';
+import 'services/socket_service.dart';
 import 'providers/theme_notifier.dart';
 
 Future<void> main() async {
@@ -37,6 +38,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // Navegador y observer para la ayuda contextual global (F1) y atajos.
       navigatorKey: ShortcutService.navigatorKey,
+      scaffoldMessengerKey: SocketService.messengerKey, // global notifications (WebSocket LAN)
       navigatorObservers: [ShortcutService.observer],
       // Atajo global F1: ayuda contextual acorde al módulo activo.
       builder: (context, child) => Shortcuts(

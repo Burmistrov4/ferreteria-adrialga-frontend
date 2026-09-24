@@ -206,19 +206,20 @@ class _CobroDialogState extends State<CobroDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            // Atajos rÃ¡pidos
-            Row(
+            // Atajos rápidos — Wrap fluido para adaptarse en móvil estrecho.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton.icon(
                   onPressed: _completarMontoExactoUSD,
                   icon: const Icon(Icons.attach_money, size: 16),
-                  label: const Text('Exacto USD'),
+                  label: const Text('Exacto (USD)'),
                 ),
-                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   onPressed: _completarMontoExactoVES,
                   icon: const Icon(Icons.money, size: 16),
-                  label: const Text('Exacto Bs'),
+                  label: const Text('Exacto (Bs)'),
                 ),
               ],
             ),

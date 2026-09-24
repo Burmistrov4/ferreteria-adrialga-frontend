@@ -12,6 +12,7 @@ import '../screens/configuracion_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/api_service.dart';
 import '../services/navigation_service.dart';
+import '../services/socket_service.dart';
 
 /// Destino de navegación adaptativa del shell principal.
 class DestinoNav {
@@ -88,6 +89,9 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    // Sincronización LAN: después de iniciar sesión, se activa el canal WebSocket y
+    // cada pantalla interesada se suscribe a `db_update` para refrescarse.
+    SocketService.start();
     // Las pestañas sin historial (p.ej. Facturas abierta como pestaña base)
     // usan este canal para retroceder a Inicio desde su botón Atrás.
     NavigationService.irAInicio = () => _seleccionar(0);

@@ -32,6 +32,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
   late TextEditingController _stockActualController;
   late TextEditingController _stockMinimoController;
   late TextEditingController _margenController;
+  late TextEditingController _imagenController;
   late List<CategoriaModel> _categorias;
   int? _selectedCategoriaId;
 
@@ -70,6 +71,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
     );
     _margenController = TextEditingController(
       text: widget.producto?.margenGanancia.toString() ?? '0.0',
+    );
+    _imagenController = TextEditingController(
+      text: widget.producto?.imagenUrl?.toString() ?? '',
     );
     _stockActualController = TextEditingController(
       text: widget.producto?.stockActual.toString() ?? '0',
@@ -182,6 +186,7 @@ class _ProductoDialogState extends State<ProductoDialog> {
     _precioController.dispose();
     _costoController.dispose();
     _margenController.dispose();
+    _imagenController.dispose();
     _stockActualController.dispose();
     _stockMinimoController.dispose();
     super.dispose();
@@ -298,6 +303,9 @@ class _ProductoDialogState extends State<ProductoDialog> {
         'Costo_Promedio': _costo,
         'Costo_Ultimo': _costo,
         'Margen_Ganancia': _margen,
+        'Imagen_URL': _imagenController.text.trim().isEmpty
+            ? null
+            : _imagenController.text.trim(),
         'Stock_Actual': int.tryParse(_stockActualController.text) ?? 0,
         'Stock_Minimo': int.tryParse(_stockMinimoController.text) ?? 5,
         'Categoria_ID': _selectedCategoriaId,
@@ -337,10 +345,17 @@ class _ProductoDialogState extends State<ProductoDialog> {
                     validator: (val) =>
                         val == null || val.isEmpty ? 'Requerido' : null,
                   ),
-                  TextFormField(
+                  TextField(
                     controller: _descripcionController,
                     decoration: const InputDecoration(
                       labelText: 'Descripción',
+                    ),
+                  ),
+                  TextField(
+                    controller: _imagenController,
+                    decoration: const InputDecoration(
+                      labelText: 'URL de la imagen (opcional)',
+                      hintText: 'https://ejemplo.com/foto.jpg',
                     ),
                   ),
                     Row(
@@ -377,6 +392,10 @@ class _ProductoDialogState extends State<ProductoDialog> {
                             onSelected: (cat) {
                               setState(() => _selectedCategoriaId = cat.categoriaId);
                               final ms = cat.margenSugerido;
+                              // SKU automático por categoría (formato: LEA-0001).
+                              if (_skuController.text.trim().isEmpty) {
+                                _skuController.text = cat.prefijoSku ?? '';
+                              }
                               // Cascada por categoría: aplica SOLO si el usuario
                               // no editó el margen a mano.
                               if (ms != null && ms > 0 && !_margenEditadoManual) {
@@ -514,7 +533,6 @@ class _ProductoDialogState extends State<ProductoDialog> {
                           _validarNumero(v, obligatorioPositivo: false),
                       decoration: const InputDecoration(
                         labelText: 'Margen %',
-                        helperText: 'Sobre el costo',
                       ),
                     ),
                     TextFormField(

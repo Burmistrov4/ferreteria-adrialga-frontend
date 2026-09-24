@@ -16,6 +16,9 @@ class ProductoModel {
   /// Último costo de compra registrado (base del precio sugerido).
   final double costoUltimo;
 
+  /// URL remota de imagen del producto (opcional, nullable).
+  final String? imagenUrl;
+
   ProductoModel({
     required this.productoId,
     required this.skuCodigo,
@@ -29,6 +32,7 @@ class ProductoModel {
     this.activo = true,
     this.margenGanancia = 0,
     this.costoUltimo = 0,
+    this.imagenUrl,
   });
 
   int get id => productoId;
@@ -76,6 +80,7 @@ class ProductoModel {
       margenGanancia:
           _toDouble(json['margenGanancia'] ?? json['Margen_Ganancia']),
       costoUltimo: _toDouble(json['costoUltimo'] ?? json['Costo_Ultimo']),
+      imagenUrl: (json['imagenUrl'] ?? json['Imagen_URL'])?.toString(),
     );
   }
 
@@ -91,6 +96,9 @@ class ProductoModel {
       'Stock_Minimo': stockMinimo,
       'Categoria_ID': categoriaId,
       'Activo': activo,
+      'Margen_Ganancia': margenGanancia,
+      'Costo_Ultimo': costoUltimo,
+      if (imagenUrl != null) 'Imagen_URL': imagenUrl,
     };
   }
 }

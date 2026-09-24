@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'pos_screen.dart';
@@ -96,7 +96,7 @@ class _MetricaCard extends StatelessWidget {
     this.onTap,
   });
 
-  @override
+@override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
@@ -105,68 +105,72 @@ class _MetricaCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        // LayoutBuilder + FittedBox(scaleDown): el contenido se dibuja a su
+        // tamaño natural y SOLO se encoge cuando la celda del grid queda más
+        // baja que el contenido (móvil angosto / aspect ratio forzoso).
+        // Elimina el "BOTTOM OVERFLOWED" sin fijar alturas manuales.
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(icon, color: color, size: 22),
-                  if (onTap != null)
-                    Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                ],
-              ),
-              const Spacer(),
-              // FittedBox para que el valor monetario escale hacia abajo
-              // en tarjetas angostas sin desbordar, jamás agrandando.
-              FittedBox(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              return FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      valor,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: box.maxWidth),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Icon(icon, color: color, size: 22),
+                          if (onTap != null)
+                            Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                        ],
                       ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                titulo,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (descripcion.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  descripcion,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colorScheme.onSurfaceVariant,
+                      const SizedBox(height: 10),
+                      Text(
+                        valor,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        titulo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (descripcion.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          descripcion,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
                 ),
-              ],
-            ],
+              );
+            },
           ),
         ),
       ),

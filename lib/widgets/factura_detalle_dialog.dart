@@ -326,8 +326,10 @@ class FacturaDetalleDialog extends StatelessWidget {
                       ),
                     ],
                   )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                : Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       if (_esReversible)
                         OutlinedButton.icon(
@@ -341,7 +343,6 @@ class FacturaDetalleDialog extends StatelessWidget {
                           onPressed: () => _reversar(context),
                           label: const Text('Reversar Venta'),
                         ),
-                      const SizedBox(width: 8),
                       TextButton(
                         style: TextButton.styleFrom(
                           foregroundColor:
@@ -350,13 +351,11 @@ class FacturaDetalleDialog extends StatelessWidget {
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cerrar'),
                       ),
-                      const SizedBox(width: 8),
                       OutlinedButton.icon(
                         icon: const Icon(Icons.save_alt, size: 18),
                         onPressed: () => FacturaPdfService.guardarYVer(f, tasa: tasa),
                         label: const Text('Guardar PDF'),
                       ),
-                      const SizedBox(width: 8),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Theme.of(context).colorScheme.tertiary,
@@ -366,7 +365,6 @@ class FacturaDetalleDialog extends StatelessWidget {
                         onPressed: () => FacturaPdfService.imprimir(f, tasa: tasa),
                         label: const Text('Imprimir'),
                       ),
-                      const SizedBox(width: 8),
                       OutlinedButton.icon(
                         icon: const Icon(Icons.receipt_long, size: 18),
                         onPressed: () => ImpresionService.imprimirTicketFactura(
@@ -399,7 +397,6 @@ class FacturaDetalleDialog extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 8),
           Text(
             value,
             style: TextStyle(

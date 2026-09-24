@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
+import '../services/socket_service.dart';
 import '../widgets/producto_dialog.dart';
 import '../widgets/matrix_stock_grid.dart';
 import 'categorias_screen.dart';
@@ -24,23 +25,41 @@ class _InventarioScreenState extends State<InventarioScreen> {
   @override
   void initState() {
     super.initState();
+    // Si otros terminales modifican el inventario, refrescamos en silencio.
+    SocketService.onDbUpdate(_alRecibirDbUpdate);
     _cargarDatos();
   }
 
-  Future<void> _cargarDatos() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    SocketService.offDbUpdate(_alRecibirDbUpdate);
+    super.dispose();
+  }
+
+  /// Reacción al evento `db_update` del WebSocket LAN: recarga vía setState
+  /// sin activar el spinner de pantalla completa, evitando parpadeos
+  /// mientras el almacenista navega por el listado.
+  void _alRecibirDbUpdate() {
+    if (!mounted) return;
+    _cargarDatos(silencioso: true);
+  }
+
+  Future<void> _cargarDatos({bool silencioso = false}) async {
+    if (!mounted) return;
+    if (!silencioso) setState(() => _isLoading = true);
     try {
       final prods = await ApiService.getProductos();
       final cats = await ApiService.getCategorias();
+      if (!mounted) return;
       setState(() {
         _productos = prods;
         _categorias = cats;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      if (mounted) {
-        final cs = Theme.of(context).colorScheme;
+      final cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al cargar inventario: $e'),
@@ -380,12 +399,22 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     backgroundColor: bajoStock
                         ? cs.errorContainer
                         : cs.primaryContainer,
-                    child: Icon(
-                      bajoStock ? Icons.warning_amber : Icons.inventory_2,
-                      color: bajoStock
-                          ? cs.onErrorContainer
-                          : cs.onPrimaryContainer,
-                    ),
+                    // Imagen cargada de la API si existe; fallback al ícono.
+                    child: prod.imagenUrl != null && prod.imagenUrl!.isNotEmpty
+                        ? Image.network(
+                            prod.imagenUrl!,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const Icon(Icons.image_not_supported),
+                          )
+                        : Icon(
+                            bajoStock ? Icons.warning_amber : Icons.inventory_2,
+                            color: bajoStock
+                                ? cs.onErrorContainer
+                                : cs.onPrimaryContainer,
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

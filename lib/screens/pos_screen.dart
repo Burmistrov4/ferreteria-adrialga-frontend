@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import '../services/impresion_service.dart';
 import '../services/session_guard.dart';
 import '../services/shortcut_service.dart';
+import '../services/socket_service.dart';
 import '../widgets/cliente_dialog.dart';
 import '../widgets/cobro_dialog.dart';
 
@@ -102,15 +103,66 @@ class _PosScreenState extends State<PosScreen> {
     super.initState();
     ShortcutService.setModule('pos');
     HardwareKeyboard.instance.addHandler(_manejarTecla);
+    // WebSocket LAN: cuando otro dispositivo modifica productos/ventas,
+    // esta pantalla recarga el catálogo en silencio sin perder el carrito.
+    SocketService.onDbUpdate(_alRecibirDbUpdate);
     _cargarProductos();
     _cargarTasaCambio();
+  }
+
+  void _alRecibirDbUpdate() {
+    // Guardia de ciclo de vida: el socket puede llegar justo tras el
+    // desmontaje (offDbUpdate se procesa en el mismo tick).
+    if (!mounted) return;
+    // Invalidar caché de variantes: el WebSocket puede anunciar cambios de
+    // stock/precio en matrices hechos desde otro terminal de la LAN.
+    _matricesCache.clear();
+    _cargarProductos();
+    _cargarTasaCambio();
+  }
+
+  // ── Higiene de FocusNode del listado (crash "used after being disposed") ──
+  //
+  // Regla: un FocusNode JAMÁS se dispone en el mismo frame en que su tile
+  // sigue montado (el dispose() del TextField lo usa para desacoplarse y el
+  // framework lanza la aserción). Toda eliminación difiere el dispose al
+  // callback post-frame, cuando el ListView ya reconstruyó sin ese ítem.
+  final List<FocusNode> _focosPendientesDispose = [];
+  bool _flushDisposeProgramado = false;
+
+  void _disponerFocoPostFrame(FocusNode nodo) {
+    _focosPendientesDispose.add(nodo);
+    if (_flushDisposeProgramado) return;
+    _flushDisposeProgramado = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _flushDisposeProgramado = false;
+      final pendientes = List.of(_focosPendientesDispose);
+      _focosPendientesDispose.clear();
+      for (final n in pendientes) {
+        // El nodo pudo quedar en blanco tras un clear() total; solo se
+        // dispone si aún no fue recolectado por dispose() de la pantalla.
+        n.dispose();
+      }
+    });
   }
 
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_manejarTecla);
+    SocketService.offDbUpdate(_alRecibirDbUpdate);
     _busquedaFocus.dispose();
     _searchController.dispose();
+    // Recolectar todos los FocusNode del carrito (activos y los pendientes
+    // de dispose diferido) evita el crash "A FocusNode was used after being
+    // disposed" al cerrar la vista o purgar el carrito.
+    for (final f in _focosCantidad) {
+      f.dispose();
+    }
+    _focosCantidad.clear();
+    for (final f in _focosPendientesDispose) {
+      f.dispose();
+    }
+    _focosPendientesDispose.clear();
     super.dispose();
   }
 
@@ -123,6 +175,10 @@ class _PosScreenState extends State<PosScreen> {
           _filteredProductos = productos;
           _isLoading = false;
         });
+        // Reaplicar la búsqueda vigente: un refresco por WebSocket no debe
+        // resetear el filtro que el cajero estaba usando.
+        final q = _searchController.text.trim();
+        if (q.isNotEmpty) _filtrarProductos(q);
         _ofrecerRestaurarCarrito();
       }
     } catch (e) {
@@ -352,7 +408,7 @@ class _PosScreenState extends State<PosScreen> {
           'Ajustado al stock máximo de la combinación ($stockLimite)',
         );
       } else if (nuevaCantidad <= 0) {
-        _carrito.remove(item);
+        _retirarItemDelCarrito(item);
       } else {
         item.cantidad = nuevaCantidad;
       }
@@ -360,23 +416,30 @@ class _PosScreenState extends State<PosScreen> {
     _sincronizarRespaldoCarrito();
   }
 
+  /// Lógica compartida de retiro (papelera, X, Dismissible o cantidad=0):
+  /// saca el ítem, recorta su FocusNode de la lista y reacomoda el índice
+  /// activo del atajo F3. El nodo se dispone al FINAL del frame: si se
+  /// dispusiera de inmediato, el tile montado en este frame lo tocaría al
+  /// desacoplarse y se dispararía "A FocusNode was used after being disposed".
+  /// Debe llamarse SIEMPRE dentro de un setState.
+  void _retirarItemDelCarrito(CartItem item) {
+    final idx = _carrito.indexOf(item);
+    _carrito.remove(item);
+    if (idx >= 0 && idx < _focosCantidad.length) {
+      _disponerFocoPostFrame(_focosCantidad.removeAt(idx));
+    }
+    if (_indiceActivo != null) {
+      if (_carrito.isEmpty) {
+        _indiceActivo = null;
+      } else if (_indiceActivo! >= _carrito.length) {
+        _indiceActivo = _carrito.length - 1;
+      }
+    }
+  }
+
   /// Elimina un ítem del carrito (botón papelera, X o Dismissible).
   void _eliminarDelCarrito(CartItem item) {
-    setState(() {
-      final idx = _carrito.indexOf(item);
-      _carrito.remove(item);
-      // Sincronizar foco activo y FocusNodes para que F3/index sigan válidos.
-      if (idx >= 0 && idx < _focosCantidad.length) {
-        _focosCantidad.removeAt(idx).dispose();
-      }
-      if (_indiceActivo != null) {
-        if (_carrito.isEmpty) {
-          _indiceActivo = null;
-        } else if (_indiceActivo! >= _carrito.length) {
-          _indiceActivo = _carrito.length - 1;
-        }
-      }
-    });
+    setState(() => _retirarItemDelCarrito(item));
     _sincronizarRespaldoCarrito();
   }
 
@@ -482,6 +545,7 @@ class _PosScreenState extends State<PosScreen> {
             _carrito.clear();
             _clienteSeleccionado = null;
             _esConsumidorFinal = false;
+            _indiceActivo = null;
           });
           _sincronizarRespaldoCarrito();
           _cargarProductos();
@@ -696,6 +760,13 @@ class _PosScreenState extends State<PosScreen> {
     // Mantener un FocusNode por ítem para el atajo F3 (cantidad).
     while (_focosCantidad.length < _carrito.length) {
       _focosCantidad.add(FocusNode());
+    }
+    // Recorte simétrico (p. ej. tras vaciar el carrito al cobrar): los nodos
+    // excedentes se disponen al final del frame, cuando su tile ya se
+    // desmontó con el rebuild. Sin este recorte la lista quedaba más larga
+    // que el carrito y un removeAt(idx) posterior disponía un nodo EN USO.
+    while (_focosCantidad.length > _carrito.length) {
+      _disponerFocoPostFrame(_focosCantidad.removeLast());
     }
     return ListView.builder(
       itemCount: _carrito.length,

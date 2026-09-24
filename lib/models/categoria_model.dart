@@ -8,12 +8,16 @@ class CategoriaModel {
   /// categoría. null = vinieron sin datos o no aplica (cascada detiene).
   final double? margenSugerido;
 
+  /// Prefijo técnico de SKU (ej. PIN, TAL.) que precede al número correlativo.
+  final String? prefijoSku;
+
   CategoriaModel({
     required this.categoriaId,
     required this.nombreCategoria,
     this.descripcion,
     this.activo = true,
     this.margenSugerido,
+    this.prefijoSku,
   });
 
   int get id => categoriaId;
@@ -30,6 +34,7 @@ class CategoriaModel {
       margenSugerido: double.tryParse(
           (json['margenSugerido'] ?? json['Margen_Sugerido'] ?? '')
               .toString()),
+      prefijoSku: json['prefijoSku']?.toString() ?? json['Prefijo_SKU']?.toString(),
     );
   }
 

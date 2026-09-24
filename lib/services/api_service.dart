@@ -36,18 +36,54 @@ class ApiService {
       'https://ferreteria-adrialga-backend-production.up.railway.app/api';
   static const String _urlLocalWeb = 'http://localhost:3000/api';
 
+  // LAN Wi-Fi: IP fija de la laptop de desarrollo (visible al levantar
+  // `npm run dev` — el servidor muestra "🌐 Acceso de red local: http://<ip>:3000").
+  static const String _urlLocalLan = 'http://192.168.98.153:3000/api';
+
+  /// URL base seleccionada en tiempo de ejecución (selector de entorno del
+  /// Login: "Producción" / "Local con IP manual"). Se persiste en
+  /// SharedPreferences; se prioriza sobre la resolución de entorno normal.
+  static String? _baseUrlRuntime;
+
+  /// Solo lectura del runtime (por ejemplo para precargar el selector del login).
+  static String? get ultimoBaseUrlRuntime => _baseUrlRuntime;
+
+  /// Sets/gets the runtime base URL (used by the login environment selector).
+  static void setBaseUrlRuntime(String? apiUrl) {
+    _baseUrlRuntime = apiUrl;
+    SharedPreferences.getInstance().then((prefs) {
+      if (apiUrl == null) {
+        prefs.remove('api_base_url');
+      } else {
+        prefs.setString('api_base_url', apiUrl);
+      }
+    });
+  }
+
+  /// Caché leída al iniciar la app (llamar desde main).
+  static Future<void> loadBaseUrlRuntime() async {
+    final prefs = await SharedPreferences.getInstance();
+    _baseUrlRuntime = prefs.getString('api_base_url');
+  }
+
   // Determinación dinámica de la URL base según la plataforma
   static String get baseUrl {
     String url;
     if (_baseUrlOverride.isNotEmpty) {
       // 1) Override explícito: gana sobre cualquier otro modo.
       url = _baseUrlOverride;
+    } else if (_baseUrlRuntime != null && _baseUrlRuntime!.isNotEmpty) {
+      // 2) Runtime en vivo (se setea desde el login - LAN universidad).
+      url = _baseUrlRuntime!;
     } else if (_usarLocal) {
       // 2) Desarrollo local (solo como fallback cuando no hay override).
       if (kIsWeb) {
         url = _urlLocalWeb;
       } else if (!kIsWeb && Platform.isAndroid) {
-        url = 'http://10.0.2.2:3000/api'; // Emulador Android
+        // En Android la app puede estar corriendo en:
+        //   » Emulador   → 10.0.2.2 apunta al equipo anfitrión;
+        //   » Dispositivo físico con Wi-Fi → usamos la IP LAN directamente.
+        url = _urlLocalLan;
       } else {
         url = _urlLocalWeb; // Windows / macOS / iOS Simulator
       }
