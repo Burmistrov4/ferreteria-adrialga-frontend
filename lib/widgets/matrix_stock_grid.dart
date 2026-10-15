@@ -81,8 +81,18 @@ class MatrixStockGridState extends State<MatrixStockGrid> {
     final attrsTexto = v.atributos.entries
         .map((e) => '${e.key}: ${e.value}')
         .join(' · ');
+    // Se declaran aqui para capturar el texto dentro del `finally`.
+    String stockText = '';
+    String costoText = '';
+    String precioText = '';
+    String margenText = '';
 
-    final ok = await showDialog<bool>(
+    // FASE 3: si `showDialog` lanza (p. ej. el hijo no puede construirse),
+    // los cuatro controladores quedaban vivos para siempre. Con try/finally
+    // la liberacion esta garantizada en todos los caminos.
+    bool? ok;
+    try {
+    ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(v.sku, style: const TextStyle(fontSize: 15)),
@@ -172,15 +182,17 @@ class MatrixStockGridState extends State<MatrixStockGrid> {
         ],
       ),
     );
-    // Capturar valores ANTES de disponer los controladores.
-    final stockText = stockCtrl.text.trim();
-    final costoText = costoCtrl.text.trim().replaceAll(',', '.');
-    final precioText = precioCtrl.text.trim().replaceAll(',', '.');
-    final margenText = margenCtrl.text.trim().replaceAll(',', '.');
-    stockCtrl.dispose();
-    costoCtrl.dispose();
-    precioCtrl.dispose();
-    margenCtrl.dispose();
+    } finally {
+      // Capturar valores ANTES de disponer los controladores.
+      stockText = stockCtrl.text.trim();
+      costoText = costoCtrl.text.trim().replaceAll(',', '.');
+      precioText = precioCtrl.text.trim().replaceAll(',', '.');
+      margenText = margenCtrl.text.trim().replaceAll(',', '.');
+      stockCtrl.dispose();
+      costoCtrl.dispose();
+      precioCtrl.dispose();
+      margenCtrl.dispose();
+    }
     if (ok != true) return;
 
     final res = await ApiService.actualizarVariante(v.varianteId, {

@@ -1,0 +1,272 @@
+[
+  {
+    "etiqueta": "Atrás",
+    "rol": "button",
+    "x": 4,
+    "y": 4,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Recargar esquema",
+    "rol": "button",
+    "x": 1498,
+    "y": 4,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ocultar registro",
+    "rol": "button",
+    "x": 1546,
+    "y": 4,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "usuarios 3 Usuario_ID int Nombre str Credencial str Password str Rol enum(' Activo bool Fecha_Registro fecha PIN_Operaciones str",
+    "rol": "",
+    "x": 40,
+    "y": 96,
+    "w": 236,
+    "h": 192,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "clientes 12 Cliente_ID int RIF_Cedula str Razon_Social str Direccion str Telefono str Email str Fecha_Registro fecha Num_Documento str Tipo_Documento str",
+    "rol": "",
+    "x": 372,
+    "y": 96,
+    "w": 236,
+    "h": 211,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "proveedores 3 Proveedor_ID int RIF_Cedula str Razon_Social str Telefono str Email str Direccion str Activo bool Fecha_Registro fecha",
+    "rol": "",
+    "x": 704,
+    "y": 96,
+    "w": 236,
+    "h": 192,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "categorias 698 Categoria_ID int Nombre str Descripcion str Activo bool Fecha_Registro fecha Prefijo_SKU str Margen_Sugerido dec Categoria_Padre_ID int",
+    "rol": "",
+    "x": 1036,
+    "y": 96,
+    "w": 236,
+    "h": 192,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Actividad en vivo",
+    "rol": "",
+    "x": 1319,
+    "y": 83,
+    "w": 218,
+    "h": 19,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "0",
+    "rol": "",
+    "x": 1537,
+    "y": 84,
+    "w": 7,
+    "h": 17,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Limpiar registro",
+    "rol": "button",
+    "x": 1544,
+    "y": 68,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "productos 7278 Producto_ID int SKU_Codigo str Nombre str Precio_Venta dec Costo_Promedio dec Stock_Actual int Stock_Minimo int Categoria_ID int Activo bool Fecha_Registro fecha Costo_Ultimo dec Margen_Ganancia dec Imagen_URL str Codigo_EPA str Marca str Precio_Ref_USD dec",
+    "rol": "",
+    "x": 40,
+    "y": 371,
+    "w": 236,
+    "h": 340,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "caja 16 Caja_ID int Nombre str Saldo_Inicial dec Saldo_Actual dec Fecha_Apertura fecha Estado str Fecha_Cierre fecha Activa bool Usuario_ID int",
+    "rol": "",
+    "x": 372,
+    "y": 371,
+    "w": 236,
+    "h": 211,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "movimientos_caja 166 Movimiento_ID int Caja_ID int Tipo str Concepto str Metodo_Pago str Monto_USD dec Tasa_Cambio dec Referencia str Origen_ID int Origen_Tipo str Fecha fecha Usuario_ID int",
+    "rol": "",
+    "x": 704,
+    "y": 371,
+    "w": 236,
+    "h": 266,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "facturas 122 Factura_ID int Numero_Control str Fecha_Emision fecha Subtotal dec Total_IVA dec Total_General dec Estatus str Tipo_Documento str Factura_Afectada_ID int Cliente_ID int Usuario_ID int Tasa_Cambio dec Monto_IGTF dec Autorizado_Por_ID int",
+    "rol": "",
+    "x": 1036,
+    "y": 371,
+    "w": 236,
+    "h": 303,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Sin actividad todavía. Use el sistema (una venta, una compra, un ajuste…) y los eventos aparecerán aquí en tiempo real.",
+    "rol": "",
+    "x": 1301,
+    "y": 479,
+    "w": 279,
+    "h": 68,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "detalle_facturas 132 Detalle_ID int Factura_ID int Producto_ID int Cantidad int Precio_Unitario dec Costo_Unitario_Historico dec Subtotal dec Variante_ID int",
+    "rol": "",
+    "x": 40,
+    "y": 775,
+    "w": 236,
+    "h": 126,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Vista de presentación 12 tablas",
+    "rol": "button",
+    "x": 14,
+    "y": 860,
+    "w": 69,
+    "h": 26,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Vista completa de la base completa",
+    "rol": "button",
+    "x": 89,
+    "y": 860,
+    "w": 69,
+    "h": 26,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "pagos 110 Pago_ID int Factura_ID int Metodo_Pago str Monto dec Referencia str Fecha_Pago fecha Tasa_Cambio dec Es_Divisa bool",
+    "rol": "",
+    "x": 372,
+    "y": 775,
+    "w": 236,
+    "h": 126,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "notas_entrega_entrada 37 Nota_ID int Numero_Nota str Fecha_Recepcion fecha Total_Costo dec Estatus str Proveedor_ID int Usuario_ID int Anulada_Por int Fecha_Anulacion fecha Motivo_Anulacion str",
+    "rol": "",
+    "x": 704,
+    "y": 775,
+    "w": 236,
+    "h": 126,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "PK",
+    "rol": "",
+    "x": 1252,
+    "y": 773,
+    "w": 14,
+    "h": 16,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "detalle_notas_entrega 37 Detalle_Nota_ID int Nota_ID int Producto_ID int Cantidad int Costo_Unitario dec Subtotal_Costo dec Variante_ID int",
+    "rol": "",
+    "x": 1036,
+    "y": 775,
+    "w": 236,
+    "h": 126,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "actividad en vivo",
+    "rol": "",
+    "x": 1180,
+    "y": 811,
+    "w": 86,
+    "h": 16,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Alejar",
+    "rol": "button",
+    "x": 1122,
+    "y": 838,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Restablecer",
+    "rol": "button",
+    "x": 1170,
+    "y": 838,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "FK",
+    "rol": "",
+    "x": 1253,
+    "y": 792,
+    "w": 13,
+    "h": 16,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Acercar",
+    "rol": "button",
+    "x": 1218,
+    "y": 838,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  }
+]

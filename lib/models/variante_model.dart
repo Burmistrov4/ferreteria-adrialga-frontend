@@ -1,3 +1,5 @@
+import '../utils/parseo.dart';
+
 /// Modelos del inventario matricial (Tarea 5.2): variantes de producto con
 /// atributos cruzados (ej. Color=Gris, Talla=M).
 class ProductoVariante {
@@ -38,8 +40,10 @@ class ProductoVariante {
       sku: (json['sku'] ?? json['SKU_Variante'] ?? '').toString(),
       precio: _d(json['precio'] ?? json['Precio_Venta']),
       costo: _d(json['costo'] ?? json['Costo_Unitario']),
-      stock: int.tryParse((json['stock'] ?? json['Stock_Actual']).toString()) ?? 0,
-      activo: json['activo'] is bool ? json['activo'] as bool : true,
+      stock: numI(json['stock'] ?? json['Stock_Actual']),
+      // FASE 3: antes `is bool ? ... : true`, asi que un tinyint 0 de MySQL
+      // se interpretaba como "activo". numB entiende 1/0/"0"/"false".
+      activo: numB(json['activo'] ?? json['Activo']),
       atributos: json['atributos'] is Map
           ? (json['atributos'] as Map)
               .map((k, v) => MapEntry(k.toString(), v.toString()))
@@ -83,16 +87,21 @@ class MatrizVariantes {
   });
 
   factory MatrizVariantes.fromJson(Map<String, dynamic> json) {
+    // FASE 3: `(v as List)` lanzaba TypeError si un eje llegaba como String
+    // o null. Ahora cada valor se normaliza: List -> sus elementos, escalar
+    // -> lista de uno, null -> lista vacia.
     final ejesRaw = json['ejes'] is Map
         ? (json['ejes'] as Map).map(
             (k, v) => MapEntry(
               k.toString(),
-              (v as List).map((e) => e.toString()).toList(),
+              v is List
+                  ? v.map((e) => e.toString()).toList()
+                  : (v == null ? const <String>[] : <String>[v.toString()]),
             ),
           )
         : <String, List<String>>{};
     return MatrizVariantes(
-      productoId: int.tryParse('${json['productoId']}') ?? 0,
+      productoId: numI(json['productoId']),
       skuBase: (json['skuBase'] ?? '').toString(),
       nombre: (json['nombre'] ?? '').toString(),
       matriz: (json['matriz'] is List)

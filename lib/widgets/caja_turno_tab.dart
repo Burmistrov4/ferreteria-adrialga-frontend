@@ -75,18 +75,28 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
       return;
     }
     setState(() => _trabajando = true);
-    final r = await ApiService.abrirCaja(
-      montoInicial: monto,
-      observacion: _obsCtrl.text.trim(),
-    );
-    setState(() => _trabajando = false);
-    if (r['success'] == true) {
-      _mensaje('Caja abierta correctamente');
-      _montoInicialCtrl.clear();
-      _obsCtrl.clear();
-      await _cargar();
-    } else {
-      _mensaje(r['error']?.toString() ?? 'No se pudo abrir la caja', error: true);
+    // BLINDAJE (Fase 2): `finally` rehabilita los botones SIEMPRE. Antes, si
+    // `abrirCaja` lanzaba (timeout/red), `_trabajando` quedaba en true para
+    // siempre y la vista de Caja se bloqueaba (botones deshabilitados).
+    try {
+      final r = await ApiService.abrirCaja(
+        montoInicial: monto,
+        observacion: _obsCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      if (r['success'] == true) {
+        _mensaje('Caja abierta correctamente');
+        _montoInicialCtrl.clear();
+        _obsCtrl.clear();
+        await _cargar();
+      } else {
+        _mensaje(r['error']?.toString() ?? 'No se pudo abrir la caja',
+            error: true);
+      }
+    } catch (e) {
+      _mensaje('No se pudo abrir la caja: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _trabajando = false);
     }
   }
 
@@ -117,18 +127,25 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
     if (confirmar != true || !mounted) return;
 
     setState(() => _trabajando = true);
-    final r = await ApiService.cerrarCaja(
-      montoContado: montoContado,
-      observacion: _obsCtrl.text.trim(),
-    );
-    setState(() => _trabajando = false);
-    if (r['success'] == true) {
-      _mensaje('Caja cerrada. Saldo entregado: USD \$${_numD(r['saldoEntregado'] ?? 0).toStringAsFixed(2)}');
-      _montoContadoCtrl.clear();
-      _obsCtrl.clear();
-      await _cargar();
-    } else {
-      _mensaje(r['error']?.toString() ?? 'No se pudo cerrar la caja', error: true);
+    try {
+      final r = await ApiService.cerrarCaja(
+        montoContado: montoContado,
+        observacion: _obsCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      if (r['success'] == true) {
+        _mensaje('Caja cerrada. Saldo entregado: USD \$${_numD(r['saldoEntregado'] ?? 0).toStringAsFixed(2)}');
+        _montoContadoCtrl.clear();
+        _obsCtrl.clear();
+        await _cargar();
+      } else {
+        _mensaje(r['error']?.toString() ?? 'No se pudo cerrar la caja',
+            error: true);
+      }
+    } catch (e) {
+      _mensaje('No se pudo cerrar la caja: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _trabajando = false);
     }
   }
 
@@ -158,105 +175,121 @@ class _CajaTurnoTabState extends State<CajaTurnoTab> {
     final esSupervisor = ApiService.esSupervisor;
     var enviando = false;
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: const Text('Ingreso de Caja (Fondo de Maniobra)'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Inyecta efectivo al turno para dar vuelto o cubrir '
-                  'compras a contado. Queda registrado en el arqueo.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+    try {
+      await showDialog<void>(
+        context: context,
+        // barrierDismissible false + try/finally dentro del handler: si la API
+        // falla, igualmente se cierra el diálogo y se libera el overlay modal.
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            title: const Text('Ingreso de Caja (Fondo de Maniobra)'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Inyecta efectivo al turno para dar vuelto o cubrir '
+                    'compras a contado. Queda registrado en el arqueo.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: montoCtrl,
-                  autofocus: true,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Monto (USD)',
-                    prefixText: '\$ ',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                if (!esSupervisor) ...[
                   const SizedBox(height: 12),
                   TextField(
-                    controller: pinCtrl,
-                    obscureText: true,
-                    keyboardType: TextInputType.number,
+                    controller: montoCtrl,
+                    autofocus: true,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
-                      labelText: 'PIN de Supervisor',
-                      hintText: 'Requerido para autorizar el ingreso',
+                      labelText: 'Monto (USD)',
+                      prefixText: '\$ ',
                       border: OutlineInputBorder(),
                     ),
                   ),
+                  if (!esSupervisor) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: pinCtrl,
+                      obscureText: true,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'PIN de Supervisor',
+                        hintText: 'Requerido para autorizar el ingreso',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton.icon(
-              onPressed: enviando
-                  ? null
-                  : () async {
-                      final monto =
-                          double.tryParse(montoCtrl.text.trim()) ?? 0;
-                      if (monto <= 0) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Ingrese un monto mayor a \$0'),
-                          ),
-                        );
-                        return;
-                      }
-                      setDialog(() => enviando = true);
-                      final res = await ApiService.ingresarFondoCaja(
-                        monto: monto,
-                        pinSupervisor: !esSupervisor ? pinCtrl.text : null,
-                      );
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      if (res['success'] == true) {
-                        await _cargar();
-                      } else if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
+            actions: [
+              TextButton(
+                onPressed: enviando ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton.icon(
+                onPressed: enviando
+                    ? null
+                    : () async {
+                        final monto =
+                            double.tryParse(montoCtrl.text.trim()) ?? 0;
+                        if (monto <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Ingrese un monto mayor a \$0'),
+                            ),
+                          );
+                          return;
+                        }
+                        setDialog(() => enviando = true);
+                        try {
+                          final res = await ApiService.ingresarFondoCaja(
+                            monto: monto,
+                            pinSupervisor:
+                                !esSupervisor ? pinCtrl.text : null,
+                          );
+                          // Cierre GARANTIZADO del diálogo: se ejecuta tanto en
+                          // éxito como en error reportado por el backend.
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (res['success'] == true) {
+                            await _cargar();
+                          } else if (mounted) {
+                            _mensaje(
                               res['error']?.toString() ??
                                   'No se pudo registrar el ingreso',
-                            ),
-                            backgroundColor:
-                                Theme.of(context).colorScheme.error,
-                          ),
-                        );
-                      }
-                    },
-              icon: enviando
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.savings),
-              label: const Text('Registrar ingreso'),
-            ),
-          ],
+                              error: true,
+                            );
+                          }
+                        } catch (e) {
+                          // Si la petición LANZA (timeout sin respuesta), antes
+                          // el `await` abortaba aquí y el diálogo quedaba abierto
+                          // con el overlay modal bloqueando la pantalla (freeze).
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _mensaje('No se pudo registrar el ingreso: $e',
+                              error: true);
+                        }
+                      },
+                icon: enviando
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.savings),
+                label: const Text('Registrar ingreso'),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      // Liberación garantizada de los controladores del diálogo (leak previo:
+      // nunca se disponían → un controller y sus listeners por apertura).
+      montoCtrl.dispose();
+      pinCtrl.dispose();
+    }
   }
 
   void _mostrarDialogoCerrar() {

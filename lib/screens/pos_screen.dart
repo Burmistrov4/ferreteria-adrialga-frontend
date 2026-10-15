@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,8 +12,10 @@ import '../services/impresion_service.dart';
 import '../services/session_guard.dart';
 import '../services/shortcut_service.dart';
 import '../services/socket_service.dart';
+import '../utils/responsive.dart';
 import '../widgets/cliente_dialog.dart';
 import '../widgets/cobro_dialog.dart';
+import '../widgets/walkthrough_overlay.dart';
 
 class CartItem {
   final ProductoModel producto;
@@ -40,6 +44,14 @@ class CartItem {
   }
 }
 
+/// Clave estable y única de una línea de carrito: combina el ID de producto
+/// con el ID de variante (o 'base' para productos lineales). Evita la
+/// colisión de claves cuando dos variantes del mismo producto conviven en el
+/// carrito, que provocaba que Flutter reusara el State de la fila y los
+/// botones +/- operaran sobre el ítem equivocado.
+String _cartLineKey(CartItem item) =>
+    '${item.producto.productoId}-${item.variante?.varianteId ?? 'base'}';
+
 class PosScreen extends StatefulWidget {
   const PosScreen({super.key});
 
@@ -48,11 +60,28 @@ class PosScreen extends StatefulWidget {
 }
 
 class _PosScreenState extends State<PosScreen> {
-  List<ProductoModel> _productos = [];
   List<ProductoModel> _filteredProductos = [];
+  final Map<int, ProductoModel> _productosCache = {};
+  Timer? _debounceBusqueda;
+  DateTime? _ultimaActualizacionProductos;
+  int _busquedaSecuencia = 0;
   final List<CartItem> _carrito = [];
   bool _isLoading = true;
   final _searchController = TextEditingController();
+
+  /// Filtro de catálogo: todos, con stock o agotados.
+  /// El POS sigue validando stock en el momento de agregar y cobrar.
+  String _filtroStock = 'todos';
+
+  List<ProductoModel> get _productosVisibles {
+    if (_filtroStock == 'con') {
+      return _filteredProductos.where((p) => p.stockActual > 0).toList();
+    }
+    if (_filtroStock == 'sin') {
+      return _filteredProductos.where((p) => p.stockActual <= 0).toList();
+    }
+    return _filteredProductos;
+  }
 
   /// Cliente de la venta en curso: initia en null para forzar una
   /// asignación explícita. El checkbox "Consumidor Final" habilita el cobro
@@ -103,22 +132,43 @@ class _PosScreenState extends State<PosScreen> {
     super.initState();
     ShortcutService.setModule('pos');
     HardwareKeyboard.instance.addHandler(_manejarTecla);
-    // WebSocket LAN: cuando otro dispositivo modifica productos/ventas,
-    // esta pantalla recarga el catálogo en silencio sin perder el carrito.
-    SocketService.onDbUpdate(_alRecibirDbUpdate);
+    // WebSocket LAN: POS solo reacciona a cambios que pueden alterar su
+    // catálogo/stock. Antes escuchaba TODOS los db_update.
+    SocketService.onDbUpdateModulo(_alRecibirDbUpdate);
     _cargarProductos();
     _cargarTasaCambio();
+    // FASE C: tutorial CONTEXTUAL de cobro, sólo la primera vez que este rol
+    // entra al POS. Post-frame: el Overlay raíz aún no existe en initState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WalkthroughPrefs.mostrarSiAplica(
+        context,
+        modulo: 'pos',
+        pasos: walkthroughPos(),
+      );
+    });
   }
 
-  void _alRecibirDbUpdate() {
+  void _alRecibirDbUpdate(String modulo) {
     // Guardia de ciclo de vida: el socket puede llegar justo tras el
-    // desmontaje (offDbUpdate se procesa en el mismo tick).
+    // desmontaje.
     if (!mounted) return;
-    // Invalidar caché de variantes: el WebSocket puede anunciar cambios de
-    // stock/precio en matrices hechos desde otro terminal de la LAN.
+    if (modulo == 'tasa') {
+      _cargarTasaCambio();
+      return;
+    }
+    if (modulo != 'ventas' &&
+        modulo != 'inventario' &&
+        modulo != 'categorias' &&
+        modulo != 'configuracion' &&
+        modulo != '__reconexion__')
+      return;
+    // Invalidar caché de variantes: ventas/inventario pueden haber cambiado
+    // stock o precio en otro terminal de la LAN. Categorías/configuración
+    // también afectan los datos visibles del catálogo y las reglas del POS.
     _matricesCache.clear();
+    _ultimaActualizacionProductos = DateTime.now();
     _cargarProductos();
-    _cargarTasaCambio();
   }
 
   // ── Higiene de FocusNode del listado (crash "used after being disposed") ──
@@ -149,7 +199,8 @@ class _PosScreenState extends State<PosScreen> {
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_manejarTecla);
-    SocketService.offDbUpdate(_alRecibirDbUpdate);
+    SocketService.offDbUpdateModulo(_alRecibirDbUpdate);
+    _debounceBusqueda?.cancel();
     _busquedaFocus.dispose();
     _searchController.dispose();
     // Recolectar todos los FocusNode del carrito (activos y los pendientes
@@ -168,17 +219,21 @@ class _PosScreenState extends State<PosScreen> {
 
   Future<void> _cargarProductos() async {
     try {
-      final productos = await ApiService.getProductos();
+      final q = _searchController.text.trim();
+      final pagina = await ApiService.getProductosPaginados(
+        limit: 50,
+        q: q.isEmpty ? null : q,
+        conStock: _filtroStock == 'con',
+        sinStock: _filtroStock == 'sin',
+      );
       if (mounted) {
         setState(() {
-          _productos = productos;
-          _filteredProductos = productos;
+          _filteredProductos = pagina.datos;
+          for (final producto in pagina.datos) {
+            _productosCache[producto.productoId] = producto;
+          }
           _isLoading = false;
         });
-        // Reaplicar la búsqueda vigente: un refresco por WebSocket no debe
-        // resetear el filtro que el cajero estaba usando.
-        final q = _searchController.text.trim();
-        if (q.isNotEmpty) _filtrarProductos(q);
         _ofrecerRestaurarCarrito();
       }
     } catch (e) {
@@ -189,6 +244,32 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
+  void _filtrarProductos(String query) {
+    final secuencia = ++_busquedaSecuencia;
+    _debounceBusqueda?.cancel();
+    _debounceBusqueda = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final q = query.trim();
+        final pagina = await ApiService.getProductosPaginados(
+          limit: 50,
+          q: q.isEmpty ? null : q,
+          conStock: _filtroStock == 'con',
+          sinStock: _filtroStock == 'sin',
+        );
+        if (!mounted || secuencia != _busquedaSecuencia) return;
+        setState(() {
+          _filteredProductos = pagina.datos;
+          for (final producto in pagina.datos) {
+            _productosCache[producto.productoId] = producto;
+          }
+        });
+      } catch (e) {
+        if (!mounted || secuencia != _busquedaSecuencia) return;
+        _mostrarSnackBar('Error buscando productos: $e');
+      }
+    });
+  }
+
   Future<void> _cargarTasaCambio() async {
     final tasa = await ApiService.getTasaCambio();
     if (mounted) {
@@ -197,18 +278,6 @@ class _PosScreenState extends State<PosScreen> {
         _tasaEsBCV = ApiService.lastTasaEsBCV;
       });
     }
-  }
-
-  void _filtrarProductos(String query) {
-    setState(() {
-      _filteredProductos = _productos
-          .where(
-            (p) =>
-                p.nombre.toLowerCase().contains(query.toLowerCase()) ||
-                p.skuCodigo.toLowerCase().contains(query.toLowerCase()),
-          )
-          .toList();
-    });
   }
 
   /// Sincroniza el snapshot global del carrito para el guardia de sesión
@@ -235,16 +304,24 @@ class _PosScreenState extends State<PosScreen> {
     for (final entrada in respaldo) {
       try {
         final prod = ProductoModel.fromJson(
-            (entrada['producto'] as Map).cast<String, dynamic>());
-        final vivo = _productos.cast<ProductoModel?>().firstWhere(
-              (p) => p!.productoId == prod.productoId,
-              orElse: () => null,
-            );
-        final cant =
-            ((entrada['cantidad'] as num?)?.toInt() ?? 1).clamp(1, 1 << 30);
+          (entrada['producto'] as Map).cast<String, dynamic>(),
+        );
+        ProductoModel? vivo = _productosCache[prod.productoId];
+        if (vivo == null) {
+          vivo = await ApiService.getProductoById(prod.productoId);
+        }
+        if (vivo != null) _productosCache[vivo.productoId] = vivo;
+        final cant = ((entrada['cantidad'] as num?)?.toInt() ?? 1).clamp(
+          1,
+          1 << 30,
+        );
         if (vivo != null && vivo.stockActual > 0) {
-          restaurables.add(CartItem(
-              producto: vivo, cantidad: cant > vivo.stockActual ? vivo.stockActual : cant));
+          restaurables.add(
+            CartItem(
+              producto: vivo,
+              cantidad: cant > vivo.stockActual ? vivo.stockActual : cant,
+            ),
+          );
         }
       } catch (_) {
         // Entrada corrupta: simplemente se omite.
@@ -286,8 +363,10 @@ class _PosScreenState extends State<PosScreen> {
     // Productos matriciales: si tiene más de una variante (o atributos),
     // se abre el selector de combinación antes de tocar el carrito.
     try {
-      final matriz = _matricesCache[prod.productoId] ??= MatrizVariantes
-          .fromJson(await ApiService.getVariantesProducto(prod.productoId));
+      final matriz = _matricesCache[prod.productoId] ??=
+          MatrizVariantes.fromJson(
+            await ApiService.getVariantesProducto(prod.productoId),
+          );
       // Solo se interviene cuando hay matriz REAL (2+ variantes o atributos):
       // la variante "por defecto" del backfill se trata como venta lineal.
       final combinatorias = matriz.matriz
@@ -308,7 +387,9 @@ class _PosScreenState extends State<PosScreen> {
   void _agregarLineal(ProductoModel prod) {
     setState(() {
       final index = _carrito.indexWhere(
-        (item) => item.producto.productoId == prod.productoId && item.variante == null,
+        (item) =>
+            item.producto.productoId == prod.productoId &&
+            item.variante == null,
       );
       if (index >= 0) {
         if (_carrito[index].cantidad < prod.stockActual) {
@@ -349,51 +430,95 @@ class _PosScreenState extends State<PosScreen> {
     _sincronizarRespaldoCarrito();
   }
 
-  /// Selector rápido de variante (care debajo del detalle del producto):
-  /// chips con atributo + stock; cierra al elegir o cancelar.
+  /// Selector de variante optimizado para móvil: hoja inferior
+  /// (showModalBottomSheet) con ListTile por combinación. El onTap cierra la
+  /// hoja devolviendo la variante elegida al carrito. Reemplaza el antiguo
+  /// AlertDialog+ChoiceChip, que era tosco y difícil de tocar en pantallas
+  /// pequeñas (el ChoiceChip absorbía el gesto de selección).
   Future<ProductoVariante?> _seleccionarVariante(
     ProductoModel prod,
     List<ProductoVariante> opciones,
   ) {
-    return showDialog<ProductoVariante>(
+    return showModalBottomSheet<ProductoVariante>(
       context: context,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
-        return AlertDialog(
-          title: Text(
-            prod.nombre,
-            style: const TextStyle(fontSize: 15),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          content: SingleChildScrollView(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: opciones.map((v) {
-                final attrs = v.atributos.entries
-                    .map((e) => '${e.key}: ${e.value}')
-                    .join(' · ');
-                final agotada = v.stock <= 0;
-                return ChoiceChip(
-                  selected: false,
-                  label: Text(
-                    '${attrs.isEmpty ? v.sku : attrs} (${v.stock})',
-                    style: TextStyle(fontSize: 12, color: agotada ? cs.error : null),
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (sheetCtx) {
+        final cs = Theme.of(sheetCtx).colorScheme;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
                   ),
-                  onSelected: agotada
-                      ? null
-                      : (sel) { if (sel) Navigator.pop(ctx, v); },
-                );
-              }).toList(),
+                  child: Text(
+                    'Elige una variante — ${prod.nombre}',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const Divider(),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: opciones.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final v = opciones[i];
+                      final attrs = v.atributos.entries
+                          .map((e) => '${e.key}: ${e.value}')
+                          .join(' · ');
+                      final etiqueta = attrs.isEmpty ? v.sku : attrs;
+                      final agotada = v.stock <= 0;
+                      return ListTile(
+                        leading: Icon(
+                          agotada ? Icons.block : Icons.check_circle_outline,
+                          color: agotada ? cs.error : cs.primary,
+                        ),
+                        title: Text(
+                          etiqueta,
+                          style: const TextStyle(fontSize: 14),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          agotada ? 'Sin stock' : 'Stock: ${v.stock}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: agotada ? cs.error : cs.onSurfaceVariant,
+                          ),
+                        ),
+                        trailing: agotada
+                            ? const Icon(Icons.lock_outline, size: 18)
+                            : const Icon(Icons.chevron_right),
+                        // onTap fluido: cierra la hoja y pasa la variante.
+                        enabled: !agotada,
+                        onTap: agotada
+                            ? null
+                            : () => Navigator.pop(sheetCtx, v),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetCtx),
+                  child: const Text('Cancelar'),
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
-            ),
-          ],
         );
       },
     );
@@ -458,7 +583,14 @@ class _PosScreenState extends State<PosScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje), duration: const Duration(seconds: 2)),
+      SnackBar(
+        content: Text(mensaje),
+        // 4s: los avisos de ajuste de stock (p. ej. "Ajustado al stock
+        // máximo") requieren tiempo de lectura; 2s era insuficiente en PC.
+        // showCloseIcon permite cerrarlo antes si el cajero ya lo leyó.
+        duration: const Duration(seconds: 4),
+        showCloseIcon: true,
+      ),
     );
   }
 
@@ -471,8 +603,9 @@ class _PosScreenState extends State<PosScreen> {
   /// backend y lo memoriza. Devuelve null si no hay conexión/no existe.
   Future<ClienteModel?> _obtenerConsumidorFinal() async {
     if (_cacheConsumidorFinal != null) return _cacheConsumidorFinal;
-    _cacheConsumidorFinal =
-        await ApiService.buscarClientePorDocumento('V-00000000');
+    _cacheConsumidorFinal = await ApiService.buscarClientePorDocumento(
+      'V-00000000',
+    );
     // Si el backend no reporta el registro (aún sin seed), usa el modelo
     // estático como última red de seguridad con su ID conocido.
     return _cacheConsumidorFinal ?? ClienteModel.consumidorFinal();
@@ -481,14 +614,16 @@ class _PosScreenState extends State<PosScreen> {
   /// Validación previa del cobro: hay cliente asignado o el checkbox explícito
   /// de Consumidor Final está marcado.
   bool get _puedeCobrar =>
-      _carrito.isNotEmpty && (_clienteSeleccionado != null || _esConsumidorFinal);
+      _carrito.isNotEmpty &&
+      (_clienteSeleccionado != null || _esConsumidorFinal);
 
   Future<void> _iniciarProcesoVenta() async {
     if (!_puedeCobrar) return;
 
     // Resolución del cliente efectivo: asignado explícitamente o el
     // registro real de Consumidor Final rescatado del backend.
-    final ClienteModel cliente = _clienteSeleccionado ??
+    final ClienteModel cliente =
+        _clienteSeleccionado ??
         (await _obtenerConsumidorFinal()) ??
         ClienteModel.consumidorFinal();
     if (!mounted) return;
@@ -548,7 +683,15 @@ class _PosScreenState extends State<PosScreen> {
             _indiceActivo = null;
           });
           _sincronizarRespaldoCarrito();
-          _cargarProductos();
+          // El backend emite `db_update: ventas` antes de responder. Si el
+          // WebSocket ya actualizó el catálogo, no repetir la misma consulta;
+          // si no llegó el evento (socket caído), mantener un fallback local.
+          final ultima = _ultimaActualizacionProductos;
+          if (ultima == null ||
+              DateTime.now().difference(ultima) >
+                  const Duration(milliseconds: 800)) {
+            _cargarProductos();
+          }
         } else {
           _mostrarSnackBar('Error procesando venta: ${result['error']}');
         }
@@ -559,15 +702,48 @@ class _PosScreenState extends State<PosScreen> {
   // ─── Piezas reutilizables del layout ───────────────────────────────────────
 
   Widget _buildBarraBusqueda() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _busquedaFocus,
-      onChanged: _filtrarProductos,
-      decoration: const InputDecoration(
-        labelText: 'Buscar por Nombre o Código SKU...',
-        prefixIcon: Icon(Icons.search),
-        border: OutlineInputBorder(),
-      ),
+return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            focusNode: _busquedaFocus,
+            onChanged: _filtrarProductos,
+            decoration: const InputDecoration(
+              labelText: 'Buscar por Nombre o Código SKU...',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 155,
+          child: DropdownButtonFormField<String>(
+            initialValue: _filtroStock,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Existencias',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'todos', child: Text('Todos')),
+              DropdownMenuItem(value: 'con', child: Text('Con stock')),
+              DropdownMenuItem(value: 'sin', child: Text('Sin stock')),
+            ],
+            onChanged: (valor) {
+              if (valor == null || !mounted) return;
+              setState(() => _filtroStock = valor);
+              _cargarProductos();
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -581,9 +757,9 @@ class _PosScreenState extends State<PosScreen> {
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
-            itemCount: _filteredProductos.length,
+            itemCount: _productosVisibles.length,
             itemBuilder: (context, index) {
-              final prod = _filteredProductos[index];
+              final prod = _productosVisibles[index];
               return Card(
                 elevation: 2,
                 child: InkWell(
@@ -604,7 +780,9 @@ class _PosScreenState extends State<PosScreen> {
                           'SKU: ${prod.skuCodigo}',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
                           ),
                         ),
                         Row(
@@ -628,8 +806,12 @@ class _PosScreenState extends State<PosScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: prod.stockActual > 0
-                                    ? Theme.of(context).colorScheme.primaryContainer
-                                    : Theme.of(context).colorScheme.errorContainer,
+                                    ? Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                    : Theme.of(context)
+                                          .colorScheme
+                                          .errorContainer,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -637,8 +819,12 @@ class _PosScreenState extends State<PosScreen> {
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: prod.stockActual > 0
-                                      ? Theme.of(context).colorScheme.onPrimaryContainer
-                                      : Theme.of(context).colorScheme.onErrorContainer,
+                                      ? Theme.of(context)
+                                            .colorScheme
+                                            .onPrimaryContainer
+                                      : Theme.of(context)
+                                            .colorScheme
+                                            .onErrorContainer,
                                 ),
                               ),
                             ),
@@ -686,21 +872,27 @@ class _PosScreenState extends State<PosScreen> {
                             Text(
                               cliente.nombreRazonSocial,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               '${cliente.tipoDocumento}-${cliente.numDocumento}',
                               style: TextStyle(
-                                  fontSize: 11, color: cs.onSurfaceVariant),
+                                fontSize: 11,
+                                color: cs.onSurfaceVariant,
+                              ),
                             ),
                             if (cliente.direccion != null &&
                                 cliente.direccion!.isNotEmpty)
                               Text(
                                 cliente.direccion!,
                                 style: TextStyle(
-                                    fontSize: 10, color: cs.onSurfaceVariant),
+                                  fontSize: 10,
+                                  color: cs.onSurfaceVariant,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -709,7 +901,9 @@ class _PosScreenState extends State<PosScreen> {
                               Text(
                                 'Tel: ${cliente.telefono}',
                                 style: TextStyle(
-                                    fontSize: 10, color: cs.onSurfaceVariant),
+                                  fontSize: 10,
+                                  color: cs.onSurfaceVariant,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -717,9 +911,7 @@ class _PosScreenState extends State<PosScreen> {
                         ),
                 ),
                 TextButton(
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                  ),
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
                   onPressed: _seleccionarCliente,
                   child: Text(cliente == null ? 'Asignar' : 'CAMBIAR'),
                 ),
@@ -773,7 +965,11 @@ class _PosScreenState extends State<PosScreen> {
       itemBuilder: (context, index) {
         final item = _carrito[index];
         return _CartItemTile(
-          key: ValueKey(item.producto.productoId),
+          // Clave compuesta producto+variante: dos variantes del MISMO
+          // producto (ej. Azul/Gris de "Lámpara Matriz E2E") tenían la
+          // misma key (solo productoId) y Flutter reusaba el State,
+          // haciendo que los botones +/- operaran sobre el ítem equivocado.
+          key: ValueKey(_cartLineKey(item)),
           item: item,
           quantityFocus: _focosCantidad[index],
           activa: _indiceActivo == index,
@@ -809,7 +1005,10 @@ class _PosScreenState extends State<PosScreen> {
       children: [
         _buildClienteCard(context),
         const SizedBox(height: 8),
-        const Text('Carrito de Compras', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Text(
+          'Carrito de Compras',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 8),
         if (enSheet)
           SizedBox(height: 220, child: _buildCarritoLista())
@@ -822,10 +1021,17 @@ class _PosScreenState extends State<PosScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('TOTAL USD:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              'TOTAL USD:',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             Text(
               '\$${_totalPagar.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.primary),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: cs.primary,
+              ),
             ),
           ],
         ),
@@ -838,7 +1044,11 @@ class _PosScreenState extends State<PosScreen> {
             ),
             Text(
               'Bs. ${(_totalPagar * _tasaCambio).toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.tertiary),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: cs.tertiary,
+              ),
             ),
           ],
         ),
@@ -848,7 +1058,10 @@ class _PosScreenState extends State<PosScreen> {
           height: 48,
           child: ElevatedButton.icon(
             icon: const Icon(Icons.point_of_sale),
-            label: const Text('COBRAR Y FACTURAR', style: TextStyle(fontSize: 15)),
+            label: const Text(
+              'COBRAR Y FACTURAR',
+              style: TextStyle(fontSize: 15),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: cs.primary,
               foregroundColor: cs.onPrimary,
@@ -989,39 +1202,48 @@ class _PosScreenState extends State<PosScreen> {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Punto de Venta (POS) - Adrialga'),
+          title: Text(
+            AdrialgaResponsive.isMobile(MediaQuery.sizeOf(context).width)
+                ? 'POS · Adrialga'
+                : 'Punto de Venta (POS) - Adrialga',
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 12.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
+            if (!AdrialgaResponsive.isMobile(MediaQuery.sizeOf(context).width))
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 190),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _tasaEsBCV
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
                       _tasaEsBCV
-                          ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(4)} Bs'
-                          : 'Tasa BCV: Sin conexión',
+                          ? 'BCV ${_tasaCambio.toStringAsFixed(4)} Bs/\$'
+                          : 'Tasa de respaldo ${_tasaCambio.toStringAsFixed(4)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                        fontSize: 12,
                         color: _tasaEsBCV
-                            ? null
-                            : Theme.of(context).colorScheme.error,
+                            ? Theme.of(context).colorScheme.onPrimaryContainer
+                            : Theme.of(context).colorScheme.onErrorContainer,
                       ),
                     ),
-                    if (!_tasaEsBCV)
-                      Text(
-                        'Usando valor de respaldo',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
-            ),
             IconButton(
+              tooltip: 'Actualizar productos y tasa',
               icon: const Icon(Icons.refresh),
               onPressed: () {
                 _cargarProductos();
@@ -1033,7 +1255,9 @@ class _PosScreenState extends State<PosScreen> {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final esEscritorio = constraints.maxWidth >= _breakpointDesktop;
-            return esEscritorio ? _planoEscritorio(context) : _planoMovil(context);
+            return esEscritorio
+                ? _planoEscritorio(context)
+                : _planoMovil(context);
           },
         ),
       ),
@@ -1114,9 +1338,7 @@ class _CartItemTileState extends State<_CartItemTile> {
     // El fondo rojo con papelera aparece durante el gesto.
     final tarjeta = Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      color: widget.activa
-          ? cs.primaryContainer.withValues(alpha: 0.35)
-          : null,
+      color: widget.activa ? cs.primaryContainer.withValues(alpha: 0.35) : null,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: widget.activa
@@ -1164,19 +1386,21 @@ class _CartItemTileState extends State<_CartItemTile> {
                           ? Icons.delete_outline
                           : Icons.remove_circle_outline,
                       size: 22,
-                      color: widget.item.cantidad <= 1
-                          ? cs.error
-                          : null,
+                      color: widget.item.cantidad <= 1 ? cs.error : null,
                     ),
                     iconSize: 22,
-                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
                     tooltip: widget.item.cantidad <= 1
                         ? 'Eliminar del carrito'
                         : 'Disminuir cantidad',
                     onPressed: widget.item.cantidad <= 1
                         ? widget.onEliminar
-                        : () =>
-                            widget.onQuantityChanged(widget.item.cantidad - 1),
+                        : () => widget.onQuantityChanged(
+                            widget.item.cantidad - 1,
+                          ),
                   ),
                   const SizedBox(width: 2),
                   SizedBox(
@@ -1212,7 +1436,10 @@ class _CartItemTileState extends State<_CartItemTile> {
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline, size: 22),
                     iconSize: 22,
-                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
                     tooltip: 'Aumentar cantidad',
                     onPressed: () =>
                         widget.onQuantityChanged(widget.item.cantidad + 1),
@@ -1221,7 +1448,10 @@ class _CartItemTileState extends State<_CartItemTile> {
                   IconButton(
                     icon: const Icon(Icons.close, size: 18),
                     iconSize: 18,
-                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     color: cs.onSurfaceVariant,
                     tooltip: 'Quitar producto',
                     onPressed: widget.onEliminar,
@@ -1235,7 +1465,7 @@ class _CartItemTileState extends State<_CartItemTile> {
     );
 
     return Dismissible(
-      key: ValueKey('dismiss-${widget.item.producto.productoId}'),
+      key: ValueKey('dismiss-${_cartLineKey(widget.item)}'),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,

@@ -1,0 +1,36 @@
+{
+  "base": "http://127.0.0.1:3000",
+  "generadoEn": "2026-10-14T14:25:04.508Z",
+  "consolaErrores": [
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "pageErrors": [],
+  "httpMalos": [
+    "500 GET http://127.0.0.1:3000/api/clientes/bcv-rate",
+    "500 GET http://127.0.0.1:3000/api/clientes/bcv-rate"
+  ],
+  "reqFallidas": [],
+  "bitacora": [
+    "BASE = http://127.0.0.1:3000",
+    "Motor Flutter montado. Árbol semántico encendido ahora: true",
+    "Login: 5 nodos semánticos.",
+    "Campos escritos (largo usuario=5, largo clave=8).",
+    "¿Apareció el shell (destino \"Vender\")?: true",
+    "Walkthrough inicial cerrado (intentos): 1",
+    "  ✓ Inicio  (nodo: \"Inicio Pestaña 1 de 10\")",
+    "  ✓ Vender  (nodo: \"Vender ahora\")",
+    "  ✓ Facturas  (nodo: \"Facturas Pestaña 3 de 10\")",
+    "  ✓ Clientes  (nodo: \"Clientes Pestaña 4 de 10\")",
+    "  ✓ Productos  (nodo: \"Productos Pestaña 5 de 10\")",
+    "  ✓ Compras  (nodo: \"Compras Pestaña 6 de 10\")",
+    "  ✓ Proveedores  (nodo: \"Proveedores Pestaña 7 de 10\")",
+    "  ✓ Caja y Finanzas  (nodo: \"Caja y Finanzas Pestaña 8 de 10\")",
+    "  ✓ Ajustes  (nodo: \"Ajustes Pestaña 9 de 10\")",
+    "  ✓ Guía  (nodo: \"Guía Pestaña 10 de 10\")",
+    "Monitor de BD: clic enviado = Monitor de BD",
+    "Monitor (presentación): 27 nodos.",
+    "Cambio a modo completo: Vista completa de la base completa",
+    "Monitor (completa): 28 nodos."
+  ]
+}

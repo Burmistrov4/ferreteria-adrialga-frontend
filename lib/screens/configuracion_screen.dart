@@ -3,10 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../providers/theme_notifier.dart';
 import '../services/api_service.dart';
+import '../services/socket_service.dart';
 import '../services/configuracion_service.dart';
 import '../services/preferences_service.dart';
 import '../widgets/walkthrough_overlay.dart';
 import 'categorias_screen.dart';
+import 'usuarios_screen.dart';
 
 /// Módulo 8: Configuración (Tasa BCV, Sistema y catálogo maestro).
 class ConfiguracionScreen extends StatefulWidget {
@@ -19,6 +21,8 @@ class ConfiguracionScreen extends StatefulWidget {
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   double? _tasa;
   bool _tasaEsBCV = false;
+  String? _fuenteTasa;
+  String? _avisoTasa;
   bool _cargando = true;
 
   // ── Datos de la Empresa (edición de cabecera de tickets/PDF) ───────────
@@ -36,6 +40,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     super.initState();
     _cargarTasa();
     _cargarEmpresa();
+    SocketService.onDbUpdateModulo(_alDbUpdate);
   }
 
   @override
@@ -46,7 +51,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _telefonoCtrl.dispose();
     _pieCtrl.dispose();
     _margenDefCtrl.dispose();
+    SocketService.offDbUpdateModulo(_alDbUpdate);
     super.dispose();
+  }
+
+  void _alDbUpdate(String modulo) {
+    if (!mounted) return;
+    if (modulo == 'configuracion' || modulo == '__reconexion__')
+      _cargarEmpresa();
+    if (modulo == 'tasa' || modulo == '__reconexion__') _cargarTasa();
   }
 
   Future<void> _cargarEmpresa() async {
@@ -72,18 +85,21 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     final rif = _rifCtrl.text.trim().toUpperCase();
     final direccion = _direccionCtrl.text.trim();
     if (nombre.isEmpty || rif.isEmpty || direccion.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Nombre, RIF y Dirección son obligatorios'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nombre, RIF y Dirección son obligatorios'),
+        ),
+      );
       return;
     }
-    final base = double.tryParse(
-            _margenDefCtrl.text.trim().replaceAll(',', '.')) ??
-        -1;
+    final base =
+        double.tryParse(_margenDefCtrl.text.trim().replaceAll(',', '.')) ?? -1;
     if (base < 0 || base > 1000) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Margen por defecto debe estar entre 0 y 1000 %'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Margen por defecto debe estar entre 0 y 1000 %'),
+        ),
+      );
       return;
     }
     setState(() => _guardandoEmpresa = true);
@@ -99,15 +115,18 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     setState(() => _guardandoEmpresa = false);
     if (res['success'] == true) {
       ConfiguracionService.invalidar();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Datos de la empresa actualizados'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Datos de la empresa actualizados')),
+      );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:
-            Text(res['error']?.toString() ?? 'Error al guardar la empresa'),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            res['error']?.toString() ?? 'Error al guardar la empresa',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -118,8 +137,29 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     setState(() {
       _tasa = tasa;
       _tasaEsBCV = ApiService.lastTasaEsBCV;
+      _fuenteTasa = ApiService.lastFuenteTasa;
+      _avisoTasa = ApiService.lastAvisoTasa;
       _cargando = false;
     });
+  }
+
+  /// Texto legible para la fuente de la tasa cuando NO es la oficial en vivo.
+  /// Evita el mensaje genérico "BCV sin conexión": el backend distingue entre
+  /// histórico, deducción de facturas y respaldo seguro, y el usuario merece
+  /// saber cuál de ellos está viendo.
+  static String _descripcionFuente(String? fuente) {
+    switch (fuente) {
+      case 'cache-bd':
+        return 'última tasa oficial guardada (BCV sin conexión)';
+      case 'historico-facturas':
+        return 'tasa deducida de la última factura emitida';
+      case 'fallback-seguro':
+        return 'valor de respaldo seguro (sin histórico disponible)';
+      case 'fallback-local':
+        return 'valor de respaldo local (backend inalcanzable)';
+      default:
+        return 'valor de respaldo (BCV sin conexión)';
+    }
   }
 
   Future<void> _reiniciarTutorial() async {
@@ -164,6 +204,32 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ── Gestión de Usuarios (solo ADMIN) ────────────────────────────
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                child: Icon(
+                  Icons.manage_accounts,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+              title: const Text('Gestión de Usuarios'),
+              subtitle: const Text(
+                'Crear, editar y desactivar colaboradores (root protegido)',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UsuariosScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           // ── Tasa de cambio ──────────────────────────────────────────────
           Card(
             elevation: 2,
@@ -220,8 +286,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                   ),
                   Text(
                     _tasaEsBCV
-                        ? 'Origen: Banco Central de Venezuela (en vivo)'
-                        : 'Origen: valor de respaldo (BCV sin conexión)',
+                        ? (_fuenteTasa == 'bcv-directo'
+                            ? 'Origen: Banco Central de Venezuela (en vivo, '
+                                'lectura directa)'
+                            : 'Origen: Banco Central de Venezuela (en vivo)')
+                        : 'Origen: ${_descripcionFuente(_fuenteTasa)}',
                     style: TextStyle(
                       fontSize: 12,
                       color: _tasaEsBCV
@@ -229,6 +298,16 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                           : Theme.of(context).colorScheme.error,
                     ),
                   ),
+                  if (!_tasaEsBCV && _avisoTasa != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _avisoTasa!,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -248,13 +327,17 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.storefront_outlined,
-                          color: Theme.of(context).colorScheme.primary),
+                      Icon(
+                        Icons.storefront_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(width: 8),
                       const Text(
                         'Datos de la Empresa',
                         style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold),
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -265,24 +348,32 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     TextField(
                       controller: _nombreCtrl,
                       decoration: const InputDecoration(
-                          labelText: 'Razón Social / Nombre *'),
+                        labelText: 'Razón Social / Nombre *',
+                      ),
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _rifCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'RIF (J-…) *'),
+                      decoration: const InputDecoration(
+                        labelText: 'RIF (J-…) *',
+                      ),
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _direccionCtrl,
                       decoration: const InputDecoration(
-                          labelText: 'Dirección fiscal *'),
+                        labelText: 'Dirección fiscal *',
+                      ),
                       maxLines: 2,
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _telefonoCtrl,
                       decoration: const InputDecoration(
-                          labelText: 'Teléfono de contacto'),
+                        labelText: 'Teléfono de contacto',
+                      ),
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _pieCtrl,
                       decoration: const InputDecoration(
@@ -290,14 +381,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                         hintText: 'Ej.: ¡Gracias por su compra!',
                       ),
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _margenDefCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: 'Margen de ganancia por defecto (%)',
-                        helperText:
-                            'Se aplica en productos/variantes sin margen propio',
+                        helperText: 'Se aplica en productos/variantes sin margen propio',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -309,14 +401,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.save),
                         label: Text(
-                            _guardandoEmpresa ? 'Guardando…' : 'Guardar datos'),
-                        onPressed:
-                            _guardandoEmpresa ? null : _guardarEmpresa,
+                          _guardandoEmpresa ? 'Guardando…' : 'Guardar datos',
+                        ),
+                        onPressed: _guardandoEmpresa ? null : _guardarEmpresa,
                       ),
                     ),
                   ],
@@ -362,27 +455,27 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: SegmentedButton<ThemeModePreference>(
-                      segments: const [
-                        ButtonSegment(
-                          value: ThemeModePreference.system,
-                          icon: Icon(Icons.brightness_auto),
-                          label: Text('Sistema'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeModePreference.light,
-                          icon: Icon(Icons.light_mode),
-                          label: Text('Claro'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeModePreference.dark,
-                          icon: Icon(Icons.dark_mode),
-                          label: Text('Oscuro'),
-                        ),
-                      ],
-                      selected: {themeNotifier.preference},
-                      onSelectionChanged: (sel) =>
-                          themeNotifier.setPreference(sel.first),
-                    ),
+                        segments: const [
+                          ButtonSegment(
+                            value: ThemeModePreference.system,
+                            icon: Icon(Icons.brightness_auto),
+                            label: Text('Sistema'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeModePreference.light,
+                            icon: Icon(Icons.light_mode),
+                            label: Text('Claro'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeModePreference.dark,
+                            icon: Icon(Icons.dark_mode),
+                            label: Text('Oscuro'),
+                          ),
+                        ],
+                        selected: {themeNotifier.preference},
+                        onSelectionChanged: (sel) =>
+                            themeNotifier.setPreference(sel.first),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -408,8 +501,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ListTile(
-              leading: Icon(Icons.category,
-                  color: Theme.of(context).colorScheme.tertiary),
+              leading: Icon(
+                Icons.category,
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
               title: const Text('Categorías (Catálogo Maestro)'),
               subtitle: const Text(
                 'Agrupaciones de productos usadas en inventario y POS.',
@@ -430,8 +525,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ListTile(
-              leading: Icon(Icons.help_outline,
-                  color: Theme.of(context).colorScheme.secondary),
+              leading: Icon(
+                Icons.help_outline,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
               title: const Text('Tutorial de Cajero'),
               subtitle: const Text(
                 'Repite el recorrido guiado de primer uso (Caja → POS → Cobro → Arqueo).',

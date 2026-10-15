@@ -48,3 +48,10 @@ android/key.properties
 # Build artifacts del frontend (producción local/web) — no se versionan
 build/
 .deploy-pages/
+
+# Dependencias de Node: este es un proyecto Flutter, no aplican. Había 23 MB de
+# node_modules sin ignorar (instalados por error con un package.json suelto).
+node_modules/
+
+# Capturas sueltas de pruebas manuales
+smoke-login-*.png

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
 import '../services/api_service.dart';
+import '../services/socket_service.dart';
+import '../utils/responsive.dart';
 import '../widgets/caja_turno_tab.dart';
 
 /// Parseo seguro de valores numéricos: Prisma serializa Decimal(18,4) como
@@ -90,15 +93,36 @@ class _PatrimonioTabState extends State<_PatrimonioTab> {
   @override
   void initState() {
     super.initState();
+    SocketService.onDbUpdateModulo(_alRecibirDbUpdate);
     _cargarPatrimonio();
+  }
+
+  void _alRecibirDbUpdate(String modulo) {
+    if (!mounted ||
+        (modulo != 'ventas' && modulo != 'caja' && modulo != '__reconexion__'))
+      return;
+    _cargarPatrimonio();
+  }
+
+  @override
+  void dispose() {
+    SocketService.offDbUpdateModulo(_alRecibirDbUpdate);
+    super.dispose();
   }
 
   Future<void> _cargarPatrimonio() async {
     try {
       final data = await ApiService.getPatrimonioOperativo();
-      if (mounted) setState(() { _patrimonioData = data; _cargando = false; });
+      if (mounted)
+        setState(() {
+          _patrimonioData = data;
+          _cargando = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _cargando = false; });
+      if (mounted)
+        setState(() {
+          _cargando = false;
+        });
     }
   }
 
@@ -106,7 +130,8 @@ class _PatrimonioTabState extends State<_PatrimonioTab> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (_cargando) return const Center(child: CircularProgressIndicator());
-    if (_patrimonioData == null) return const Center(child: Text('Error al cargar patrimonio'));
+    if (_patrimonioData == null)
+      return const Center(child: Text('Error al cargar patrimonio'));
     final caja = _numD(_patrimonioData!['caja']);
     final inventario = _numD(_patrimonioData!['inventario']);
     final patrimonio = _numD(_patrimonioData!['patrimonio']);
@@ -122,9 +147,19 @@ class _PatrimonioTabState extends State<_PatrimonioTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Patrimonio Operativo Total', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+                  Text(
+                    'Patrimonio Operativo Total',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+                  ),
                   const SizedBox(height: 8),
-                  Text('\$${patrimonio.toStringAsFixed(2)}', style: TextStyle(color: cs.onSurface, fontSize: 32, fontWeight: FontWeight.bold)),
+                  Text(
+                    '\$${patrimonio.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -136,15 +171,41 @@ class _PatrimonioTabState extends State<_PatrimonioTab> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('Caja Disponible', style: TextStyle(color: cs.onSurface, fontSize: 16)),
-                    Text('\$${caja.toStringAsFixed(2)}', style: TextStyle(color: cs.primary, fontWeight: FontWeight.bold, fontSize: 18)),
-                  ]),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Caja Disponible',
+                        style: TextStyle(color: cs.onSurface, fontSize: 16),
+                      ),
+                      Text(
+                        '\$${caja.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
                   const Divider(height: 24),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('Valor del Inventario', style: TextStyle(color: cs.onSurface, fontSize: 16)),
-                    Text('\$${inventario.toStringAsFixed(2)}', style: TextStyle(color: cs.tertiary, fontWeight: FontWeight.bold, fontSize: 18)),
-                  ]),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Valor del Inventario',
+                        style: TextStyle(color: cs.onSurface, fontSize: 16),
+                      ),
+                      Text(
+                        '\$${inventario.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: cs.tertiary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -168,15 +229,37 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
   @override
   void initState() {
     super.initState();
+    SocketService.onDbUpdateModulo(_alRecibirDbUpdate);
     _cargarCuentas();
+  }
+
+  void _alRecibirDbUpdate(String modulo) {
+    if (!mounted ||
+        (modulo != 'finanzas' && modulo != 'caja' && modulo != '__reconexion__')) {
+      return;
+    }
+    _cargarCuentas();
+  }
+
+  @override
+  void dispose() {
+    SocketService.offDbUpdateModulo(_alRecibirDbUpdate);
+    super.dispose();
   }
 
   Future<void> _cargarCuentas() async {
     try {
       final data = await ApiService.getCuentasPorPagar();
-      if (mounted) setState(() { _cuentas = data; _cargando = false; });
+      if (mounted)
+        setState(() {
+          _cuentas = data;
+          _cargando = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _cargando = false; });
+      if (mounted)
+        setState(() {
+          _cargando = false;
+        });
     }
   }
 
@@ -199,14 +282,18 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
               children: [
                 Text(
                   'Saldo pendiente: \$${saldo.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: montoCtrl,
                   autofocus: true,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Monto a abonar (\$)',
                     prefixText: '\$ ',
@@ -221,10 +308,22 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
                     border: OutlineInputBorder(),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'Efectivo', child: Text('Efectivo')),
-                    DropdownMenuItem(value: 'Pago Móvil', child: Text('Pago Móvil')),
-                    DropdownMenuItem(value: 'Punto de Venta', child: Text('Punto de Venta')),
-                    DropdownMenuItem(value: 'Transferencia', child: Text('Transferencia')),
+                    DropdownMenuItem(
+                      value: 'Efectivo',
+                      child: Text('Efectivo'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Pago Móvil',
+                      child: Text('Pago Móvil'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Punto de Venta',
+                      child: Text('Punto de Venta'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Transferencia',
+                      child: Text('Transferencia'),
+                    ),
                   ],
                   onChanged: (v) {
                     if (v != null) setDialog(() => metodoPago = v);
@@ -247,12 +346,11 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              monto <= 0
-                                  ? 'Ingrese un monto mayor a \$0'
-                                  : 'El abono no puede exceder el saldo pendiente',
+                              monto <= 0 ? 'Ingrese un monto mayor a \$0' : 'El abono no puede exceder el saldo pendiente',
                             ),
-                            backgroundColor:
-                                Theme.of(context).colorScheme.error,
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .error,
                           ),
                         );
                         return;
@@ -279,8 +377,9 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
                               res['error']?.toString() ??
                                   'No se pudo registrar el abono',
                             ),
-                            backgroundColor:
-                                Theme.of(context).colorScheme.error,
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .error,
                           ),
                         );
                       }
@@ -303,7 +402,8 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (_cargando) return const Center(child: CircularProgressIndicator());
-    if (_cuentas == null) return const Center(child: Text('Error al cargar cuentas'));
+    if (_cuentas == null)
+      return const Center(child: Text('Error al cargar cuentas'));
     if (_cuentas!.isEmpty) {
       // Estado vacío amigable (mandato UX: la app se explica sola).
       return Center(
@@ -383,13 +483,27 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
                           ],
                         ),
                       ),
-                      FilledButton.tonalIcon(
-                        onPressed: estatus == 'Pagada'
-                            ? null
-                            : () => _abrirAbono(cxpId, saldo),
-                        icon: const Icon(Icons.payments, size: 16),
-                        label: const Text('Abonar'),
-                      ),
+                      AdrialgaResponsive.isMobile(
+                            MediaQuery.sizeOf(context).width,
+                          )
+                          ? IconButton.filledTonal(
+                              constraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
+                              tooltip: 'Abonar a deuda',
+                              onPressed: estatus == 'Pagada'
+                                  ? null
+                                  : () => _abrirAbono(cxpId, saldo),
+                              icon: const Icon(Icons.payments, size: 18),
+                            )
+                          : FilledButton.tonalIcon(
+                              onPressed: estatus == 'Pagada'
+                                  ? null
+                                  : () => _abrirAbono(cxpId, saldo),
+                              icon: const Icon(Icons.payments, size: 16),
+                              label: const Text('Abonar'),
+                            ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -416,8 +530,12 @@ class _CuentasPorPagarTabState extends State<_CuentasPorPagarTab> {
     );
   }
 
-  Widget _chipCxp(String etiqueta, String valor, ColorScheme cs,
-      {bool destacar = false}) {
+  Widget _chipCxp(
+    String etiqueta,
+    String valor,
+    ColorScheme cs, {
+    bool destacar = false,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -449,8 +567,18 @@ class _SeniatTab extends StatefulWidget {
 
 class _SeniatTabState extends State<_SeniatTab> {
   static const _nombresMeses = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
 
   late int _anio;
@@ -480,7 +608,10 @@ class _SeniatTabState extends State<_SeniatTab> {
   }
 
   /// Ejecuta una descarga de reporte con indicador de progreso y manejo de error.
-  Future<void> _descargar(Future<String?> Function() accion, String okMsg) async {
+  Future<void> _descargar(
+    Future<String?> Function() accion,
+    String okMsg,
+  ) async {
     if (_descargando) return;
     setState(() => _descargando = true);
     _snack('Preparando reporte fiscal...');
@@ -506,18 +637,21 @@ class _SeniatTabState extends State<_SeniatTab> {
       final ventas = (r['ventas'] as Map<String, dynamic>?) ?? {};
       final compras = (r['compras'] as Map<String, dynamic>?) ?? {};
       Widget fila(String label, double valor, {Color? color}) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(label, style: TextStyle(color: cs.onSurfaceVariant)),
-                Text(
-                  '\$${valor.toStringAsFixed(2)}',
-                  style: TextStyle(color: color ?? cs.onSurface, fontWeight: FontWeight.bold),
-                ),
-              ],
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: TextStyle(color: cs.onSurfaceVariant)),
+            Text(
+              '\$${valor.toStringAsFixed(2)}',
+              style: TextStyle(
+                color: color ?? cs.onSurface,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          );
+          ],
+        ),
+      );
       await showDialog<void>(
         context: context,
         builder: (_) => AlertDialog(
@@ -529,20 +663,41 @@ class _SeniatTabState extends State<_SeniatTab> {
               children: [
                 Text(
                   'Período: $_tituloPeriodo',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
                 const Divider(),
-                Text('Ventas', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+                Text(
+                  'Ventas',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: cs.primary,
+                  ),
+                ),
                 fila('Documentos', _numD(ventas['documentos'])),
                 fila('Base Imponible', _numD(ventas['baseImponibleUsd'])),
                 fila('IVA Débito', _numD(ventas['ivaDebitoUsd'])),
                 fila('IGTF', _numD(ventas['igtfUsd'])),
                 const Divider(),
-                Text('Compras', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+                Text(
+                  'Compras',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: cs.primary,
+                  ),
+                ),
                 fila('Documentos', _numD(compras['documentos'])),
                 fila('IVA Crédito', _numD(compras['ivaCreditoUsd'])),
                 const Divider(),
-                fila('IVA a Pagar', _numD(r['ivaAPagarUsd']), color: cs.tertiary),
+                fila(
+                  'IVA a Pagar',
+                  _numD(r['ivaAPagarUsd']),
+                  color: cs.tertiary,
+                ),
               ],
             ),
           ),
@@ -577,11 +732,17 @@ class _SeniatTabState extends State<_SeniatTab> {
           backgroundColor: (color ?? cs.primary).withValues(alpha: 0.15),
           child: Icon(icono, color: color ?? cs.primary),
         ),
-        title: Text(titulo, style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.bold)),
+        title: Text(
+          titulo,
+          style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.bold),
+        ),
         subtitle: Text(subtitulo, style: TextStyle(color: cs.onSurfaceVariant)),
         trailing: _descargando
             ? const SizedBox(
-                width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
             : const Icon(Icons.download),
         onTap: _descargando ? null : onPressed,
       ),
@@ -601,12 +762,14 @@ class _SeniatTabState extends State<_SeniatTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Reportes Fiscales SENIAT', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+                Text(
+                  'Reportes Fiscales SENIAT',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+                ),
                 const SizedBox(height: 12),
                 // Selector de período (mes / año).
                 Row(
                   children: [
-                    Icon(Icons.arrow_back_ios_new, size: 18, color: cs.onSurfaceVariant),
                     IconButton(
                       icon: const Icon(Icons.chevron_left),
                       tooltip: 'Mes anterior',
@@ -642,7 +805,6 @@ class _SeniatTabState extends State<_SeniatTab> {
                       tooltip: 'Mes siguiente',
                       onPressed: _descargando ? null : _mesSiguiente,
                     ),
-                    Icon(Icons.arrow_forward_ios, size: 18, color: cs.onSurfaceVariant),
                   ],
                 ),
               ],
@@ -675,6 +837,16 @@ class _SeniatTabState extends State<_SeniatTab> {
           onPressed: () => _descargar(
             () => ApiService.exportarResumenIvaJson(anio: _anio, mes: _mes),
             'Resumen de IVA descargado',
+          ),
+          color: cs.tertiary,
+        ),
+        _botonAccion(
+          icono: Icons.table_view,
+          titulo: 'Resumen de IVA (CSV)',
+          subtitulo: 'Formato SENIAT (; · BOM · CRLF) para adjuntar.',
+          onPressed: () => _descargar(
+            () => ApiService.exportarResumenIvaCsv(anio: _anio, mes: _mes),
+            'Resumen de IVA (CSV) descargado',
           ),
           color: cs.tertiary,
         ),

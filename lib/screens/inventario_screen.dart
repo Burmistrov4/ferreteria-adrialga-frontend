@@ -1,13 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
+import '../utils/responsive.dart';
 import '../widgets/producto_dialog.dart';
 import '../widgets/matrix_stock_grid.dart';
+import '../widgets/walkthrough_overlay.dart';
 import 'categorias_screen.dart';
 
+/// FASE C · Inventario gerencial.
+///
+/// El catálogo EPA elevó el inventario a ~7.200 ítems y 698 subcategorías.
+/// Esta pantalla se rediseñó para ese volumen:
+///  - **Paginación y filtro en servidor** (`/productos?limit&offset&q&categoriaId`):
+///    nunca se descarga el catálogo completo al cliente (colapsaba la tabla).
+///  - **Tabla densa** (`dataRowMinHeight/MaxHeight`) con columna de miniatura
+///    WebP servida por el backend (`/productos/{sku}.webp`).
+///  - **Filtro en árbol**: Categoría Padre -> Subcategoría -> Productos,
+///    resolvedor de subárbol para incluir descendientes de cualquier nivel.
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
 
@@ -20,70 +34,186 @@ class _InventarioScreenState extends State<InventarioScreen> {
   List<CategoriaModel> _categorias = [];
   String _searchQuery = '';
   bool _isLoading = true;
-  int? _categoriaFiltroId; // null = Todas las categorías
+
+  // Paginación en servidor.
+  int _total = 0;
+  int _pagina = 0; // 0-based
+  int _porPagina = 50;
+  static const List<int> _opcionesPorPagina = [25, 50, 100];
+
+  // Filtro en árbol: null = sin filtro (todas).
+  int? _categoriaPadreId;
+  int? _categoriaFiltroId;
+
+  /// Filtro por proveedor de compra: null = todos; 0 = sin proveedor atribuible;
+  /// >0 = Proveedor_ID (vínculo derivado de las notas de entrega / procedencia EPA).
+  int? _proveedorId;
+  List<Map<String, dynamic>> _proveedores = [];
+
+  /// Filtro de existencias aplicado en servidor y conservando paginación.
+  /// 'todos' | 'con' (stock > 0) | 'sin' (stock <= 0).
+  String _filtroStock = 'todos';
+
+  Timer? _debounceBusqueda;
 
   @override
   void initState() {
     super.initState();
-    // Si otros terminales modifican el inventario, refrescamos en silencio.
-    SocketService.onDbUpdate(_alRecibirDbUpdate);
+    // Solo cambios de inventario/ventas afectan este listado. Escuchar el
+    // evento global provocaba recargas por caja, proveedores y otros módulos.
+    SocketService.onDbUpdateModulo(_alRecibirDbUpdate);
     _cargarDatos();
+    // FASE C: tutorial CONTEXTUAL del módulo (solo la 1ª visita). Se agenda
+    // post-frame porque el Overlay raíz aún no existe durante initState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WalkthroughPrefs.mostrarSiAplica(
+        context,
+        modulo: 'inventario',
+        pasos: walkthroughInventario(),
+      );
+    });
   }
 
   @override
   void dispose() {
-    SocketService.offDbUpdate(_alRecibirDbUpdate);
+    _debounceBusqueda?.cancel();
+    SocketService.offDbUpdateModulo(_alRecibirDbUpdate);
     super.dispose();
   }
 
   /// Reacción al evento `db_update` del WebSocket LAN: recarga vía setState
   /// sin activar el spinner de pantalla completa, evitando parpadeos
   /// mientras el almacenista navega por el listado.
-  void _alRecibirDbUpdate() {
+  void _alRecibirDbUpdate(String modulo) {
     if (!mounted) return;
+    if (modulo == 'categorias') {
+      _cargarDatos(silencioso: true, recargarCategorias: true);
+      return;
+    }
+    if (modulo != 'ventas' &&
+        modulo != 'inventario' &&
+        modulo != '__reconexion__')
+      return;
     _cargarDatos(silencioso: true);
   }
 
-  Future<void> _cargarDatos({bool silencioso = false}) async {
+  Future<void> _cargarDatos({
+    bool silencioso = false,
+    bool recargarCategorias = false,
+  }) async {
     if (!mounted) return;
     if (!silencioso) setState(() => _isLoading = true);
     try {
-      final prods = await ApiService.getProductos();
-      final cats = await ApiService.getCategorias();
+      // Las 698 categorías son un catálogo relativamente estático para esta
+      // pantalla. No se vuelven a descargar en cada búsqueda/paginación;
+      // solo se refrescan al entrar, tras gestionar categorías o si aún no
+      // están cargadas. La consulta de productos sí permanece remota.
+      final cats = (recargarCategorias || _categorias.isEmpty)
+          ? await ApiService.getCategorias()
+          : _categorias;
+      final provs = _proveedores.isEmpty
+          ? await ApiService.getProveedores()
+          : _proveedores;
+      final pagina = await ApiService.getProductosPaginados(
+        limit: _porPagina,
+        offset: _pagina * _porPagina,
+        q: _searchQuery.trim().isEmpty ? null : _searchQuery.trim(),
+        categoriaIds: _idsSubarbol(),
+        conStock: _filtroStock == 'con',
+        sinStock: _filtroStock == 'sin',
+        proveedorId: _proveedorId,
+      );
       if (!mounted) return;
       setState(() {
-        _productos = prods;
         _categorias = cats;
+        _proveedores = (provs as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _productos = pagina.datos;
+        _total = pagina.total;
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
       final cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cargar inventario: $e'),
-            backgroundColor: cs.error,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al cargar inventario: $e'),
+          backgroundColor: cs.error,
+        ),
+      );
     }
   }
 
-  List<ProductoModel> get _productosFiltrados {
-    return _productos.where((p) {
-      // Filtro por categoría seleccionada (null = todas)
-      if (_categoriaFiltroId != null &&
-          p.categoriaId != _categoriaFiltroId) {
-        return false;
-      }
-      // Filtro por texto (nombre o SKU)
-      if (_searchQuery.isEmpty) return true;
-      final q = _searchQuery.toLowerCase();
-      return p.nombre.toLowerCase().contains(q) ||
-          p.skuCodigo.toLowerCase().contains(q);
-    }).toList();
+  // ── Árbol de categorías ───────────────────────────────────────────────────
+
+  /// Categorías raíz (sin padre).
+  List<CategoriaModel> get _categoriasRaiz =>
+      _categorias.where((c) => c.categoriaPadreId == null).toList()
+        ..sort((a, b) => a.nombreCategoria.compareTo(b.nombreCategoria));
+
+  /// Hijas directas de la categoría padre seleccionada.
+  List<CategoriaModel> get _subcategorias {
+    if (_categoriaPadreId == null) return const [];
+    return _categorias
+        .where((c) => c.categoriaPadreId == _categoriaPadreId)
+        .toList()
+      ..sort((a, b) => a.nombreCategoria.compareTo(b.nombreCategoria));
   }
+
+  /// Ids del subárbol a filtrar: la categoría elegida (padre o subcategoría)
+  /// MÁS todos sus descendientes, para que "Categoría Padre" incluya realmente
+  /// sus productos aunque estén en hojas de 2º/3º nivel.
+  List<int>? _idsSubarbol() {
+    final raiz = _categoriaFiltroId ?? _categoriaPadreId;
+    if (raiz == null) return null;
+    final ids = <int>[raiz];
+    void recorrer(int id) {
+      for (final c in _categorias) {
+        if (c.categoriaPadreId == id && !ids.contains(c.categoriaId)) {
+          ids.add(c.categoriaId);
+          recorrer(c.categoriaId);
+        }
+      }
+    }
+
+    recorrer(raiz);
+    return ids;
+  }
+
+  void _seleccionarPadre(int? id) {
+    setState(() {
+      _categoriaPadreId = id;
+      _categoriaFiltroId =
+          null; // al cambiar el padre se limpia la subcategoría
+      _pagina = 0;
+    });
+    _cargarDatos();
+  }
+
+  void _seleccionarSubcategoria(int? id) {
+    setState(() {
+      _categoriaFiltroId = id;
+      _pagina = 0;
+    });
+    _cargarDatos();
+  }
+
+  void _alBuscar(String valor) {
+    setState(() => _searchQuery = valor);
+    _debounceBusqueda?.cancel();
+    _debounceBusqueda = Timer(const Duration(milliseconds: 350), () {
+      setState(() => _pagina = 0);
+      _cargarDatos(silencioso: true);
+    });
+  }
+
+  int get _totalPaginas =>
+      _total == 0 ? 1 : ((_total + _porPagina - 1) ~/ _porPagina);
+
+  // ── CRUD ──────────────────────────────────────────────────────────────────
 
   Future<void> _abrirDialogoProducto([ProductoModel? producto]) async {
     final result = await showDialog<Map<String, dynamic>>(
@@ -93,7 +223,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
         categorias: _categorias,
         onCategoriaCreada: (cat) {
           setState(() => _categorias.add(cat));
-          _cargarDatos();
+          _cargarDatos(recargarCategorias: true);
         },
       ),
     );
@@ -162,9 +292,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
       if (ok) {
         _cargarDatos();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Producto eliminado')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Producto eliminado')));
         }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -178,42 +308,313 @@ class _InventarioScreenState extends State<InventarioScreen> {
   }
 
   /// Abre la pantalla de gestión de categorías (crear/editar/desactivar).
-  /// Al volver, recarga los datos para refrescar el filtro por categoría.
+  /// Al volver, refresca explícitamente el catálogo de categorías; las demás
+  /// recargas de inventario reutilizan el catálogo ya cargado.
   Future<void> _abrirGestionCategorias() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const CategoriasScreen()),
     );
-    _cargarDatos();
+    _cargarDatos(recargarCategorias: true);
   }
 
-  /// Barra de filtros por categoría: chip "Todas" + uno por categoría.
-  Widget _buildFiltroCategorias() {
-    if (_categorias.isEmpty) return const SizedBox.shrink();
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _categorias.length + 1,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return ChoiceChip(
-              label: const Text('Todas'),
-              selected: _categoriaFiltroId == null,
-              onSelected: (_) => setState(() => _categoriaFiltroId = null),
-            );
-          }
-          final cat = _categorias[index - 1];
-          return ChoiceChip(
-            label: Text(cat.nombreCategoria),
-            selected: _categoriaFiltroId == cat.categoriaId,
-            onSelected: (sel) => setState(
-              () => _categoriaFiltroId = sel ? cat.categoriaId : null,
+  // ── Miniatura WebP ────────────────────────────────────────────────────────
+
+  /// Miniatura del producto servida por el backend.
+  ///
+  /// [ApiService.urlImagen] resuelve la ruta relativa del catálogo EPA
+  /// (`/productos/SKU.webp`) a URL absoluta. `cacheWidth` limita el decodificado
+  /// en memoria (crítico con 7.000 imágenes); sin `cached_network_image` en el
+  /// pubspec se usa la caché de red nativa de Flutter.
+  Widget _miniatura(ProductoModel prod, {double size = 40}) {
+    final url = ApiService.urlImagen(prod.imagenUrl);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: url == null
+          ? Icon(Icons.inventory_2_outlined, size: size * 0.6)
+          : Image.network(
+              url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              cacheWidth: (size * 2).round(),
+              errorBuilder: (_, _, _) =>
+                  Icon(Icons.image_not_supported_outlined, size: size * 0.6),
             ),
-          );
+    );
+  }
+
+  // ── Filtro en árbol ───────────────────────────────────────────────────────
+
+  /// Selector jerárquico: Categoría Padre -> Subcategoría (ambos con "Todas").
+  /// Se envuelve en `LayoutBuilder`/`Wrap` para no desbordar en pantallas
+  /// estrechas (regla de oro de responsividad del proyecto).
+  Widget _buildFiltroArbol() {
+    if (_categorias.isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+
+    Widget selector({
+      required String etiqueta,
+      required int? valor,
+      required List<CategoriaModel> opciones,
+      required ValueChanged<int?> onCambio,
+      required String textoNulo,
+    }) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 260, minWidth: 180),
+        child: DropdownButtonFormField<int?>(
+          initialValue: valor,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: etiqueta,
+            border: const OutlineInputBorder(),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+          ),
+          items: <DropdownMenuItem<int?>>[
+            DropdownMenuItem<int?>(
+              value: null,
+              child: Text(textoNulo, overflow: TextOverflow.ellipsis),
+            ),
+            ...opciones.map(
+              (c) => DropdownMenuItem<int?>(
+                value: c.categoriaId,
+                child: Text(c.nombreCategoria, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+          onChanged: onCambio,
+        ),
+      );
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: cs.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            selector(
+              etiqueta: 'Categoría Padre',
+              valor: _categoriaPadreId,
+              opciones: _categoriasRaiz,
+              textoNulo: 'Todas las categorías',
+              onCambio: _seleccionarPadre,
+            ),
+            SizedBox(
+              width: 220,
+              child: DropdownButtonFormField<int?>(
+                initialValue: _proveedorId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Proveedor',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: <DropdownMenuItem<int?>>[
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Todos los proveedores',
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  ..._proveedores.map(
+                    (p) => DropdownMenuItem<int?>(
+                      value: p['Proveedor_ID'] as int?,
+                      child: Text(
+                        '${p['Razon_Social'] ?? '—'}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const DropdownMenuItem<int?>(
+                    value: 0,
+                    child: Text('Sin proveedor atribuible',
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+                onChanged: (valor) {
+                  if (!mounted) return;
+                  setState(() {
+                    _proveedorId = valor;
+                    _pagina = 0;
+                  });
+                  _cargarDatos(silencioso: true);
+                },
+              ),
+            ),
+            if (_categoriaPadreId != null)
+              selector(
+                etiqueta: 'Subcategoría',
+                valor: _categoriaFiltroId,
+                opciones: _subcategorias,
+                textoNulo: 'Todas las subcategorías',
+                onCambio: _seleccionarSubcategoria,
+              ),
+            // Ruta (breadcrumb) del filtro activo, para orientar al usuario.
+            if (_categoriaPadreId != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  _rutaFiltro(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            SizedBox(
+              width: 190,
+              child: DropdownButtonFormField<String>(
+                initialValue: _filtroStock,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Existencias',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'todos', child: Text('Todos')),
+                  DropdownMenuItem(value: 'con', child: Text('Con existencia')),
+                  DropdownMenuItem(value: 'sin', child: Text('Sin existencia')),
+                ],
+                onChanged: (valor) {
+                  if (valor == null || !mounted) return;
+                  setState(() {
+                    _filtroStock = valor;
+                    _pagina = 0;
+                  });
+                  _cargarDatos(silencioso: true);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _rutaFiltro() {
+    final nombrePadre = _categorias
+        .firstWhere(
+          (c) => c.categoriaId == _categoriaPadreId,
+          orElse: () => CategoriaModel(categoriaId: -1, nombreCategoria: '—'),
+        )
+        .nombreCategoria;
+    if (_categoriaFiltroId == null) return nombrePadre;
+    final nombreSub = _categorias
+        .firstWhere(
+          (c) => c.categoriaId == _categoriaFiltroId,
+          orElse: () => CategoriaModel(categoriaId: -1, nombreCategoria: '—'),
+        )
+        .nombreCategoria;
+    return '$nombrePadre  ›  $nombreSub';
+  }
+
+  // ── Paginación ────────────────────────────────────────────────────────────
+
+  Widget _buildPaginacion(ColorScheme cs) {
+    final desde = _total == 0 ? 0 : _pagina * _porPagina + 1;
+    final hasta = (_pagina * _porPagina + _productos.length).clamp(0, _total);
+    final ancho = MediaQuery.sizeOf(context).width;
+    final compacto = ancho < 600;
+
+    final resumen = Text(
+      '$desde–$hasta de $_total productos',
+      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+    );
+    final porPagina = SizedBox(
+      width: compacto ? 105 : 110,
+      height: 48,
+      child: DropdownButtonFormField<int>(
+        initialValue: _porPagina,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          labelText: 'Por página',
+          border: OutlineInputBorder(),
+          isDense: true,
+        ),
+        items: _opcionesPorPagina
+            .map((n) => DropdownMenuItem<int>(value: n, child: Text('$n')))
+            .toList(),
+        onChanged: (n) {
+          if (n == null) return;
+          setState(() {
+            _porPagina = n;
+            _pagina = 0;
+          });
+          _cargarDatos();
         },
       ),
+    );
+
+    final anterior = IconButton.filledTonal(
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+      icon: const Icon(Icons.chevron_left),
+      tooltip: 'Anterior',
+      onPressed: _pagina > 0
+          ? () {
+              setState(() => _pagina--);
+              _cargarDatos();
+            }
+          : null,
+    );
+    final siguiente = IconButton.filledTonal(
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+      icon: const Icon(Icons.chevron_right),
+      tooltip: 'Siguiente',
+      onPressed: (_pagina + 1) < _totalPaginas
+          ? () {
+              setState(() => _pagina++);
+              _cargarDatos();
+            }
+          : null,
+    );
+    final pagina = Text('Página ${_pagina + 1} de $_totalPaginas');
+
+    if (compacto) {
+      return Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [resumen, porPagina],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              anterior,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: pagina,
+              ),
+              siguiente,
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        resumen,
+        const SizedBox(width: 8),
+        porPagina,
+        const Spacer(),
+        anterior,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: pagina,
+        ),
+        siguiente,
+      ],
     );
   }
 
@@ -223,23 +624,26 @@ class _InventarioScreenState extends State<InventarioScreen> {
       children: [
         TextField(
           decoration: const InputDecoration(
-            labelText: 'Buscar por SKU o Nombre',
+            labelText: 'Buscar por SKU, nombre, marca o código EPA',
             prefixIcon: Icon(Icons.search),
             border: OutlineInputBorder(),
           ),
-          onChanged: (val) => setState(() => _searchQuery = val),
+          onChanged: _alBuscar,
         ),
         const SizedBox(height: 12),
-        _buildFiltroCategorias(),
+        _buildFiltroArbol(),
         const SizedBox(height: 12),
         Expanded(
-          child: _productosFiltrados.isEmpty
+          child: _productos.isEmpty && !_isLoading
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.inventory_2_outlined,
-                          size: 40, color: cs.outline),
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 40,
+                        color: cs.outline,
+                      ),
                       const SizedBox(height: 8),
                       const Text(
                         'No hay productos que coincidan con el filtro',
@@ -249,7 +653,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 )
               : LayoutBuilder(
                   builder: (context, constraints) {
-                    // Vista adaptativa: tabla de grilla en escritorio, tarjetas
+                    // Vista adaptativa: tabla densa en escritorio, tarjetas
                     // (con bottom sheet de detalle) en pantallas móviles.
                     if (constraints.maxWidth >= 600) {
                       return _vistaTablaEscritorio(cs);
@@ -258,6 +662,8 @@ class _InventarioScreenState extends State<InventarioScreen> {
                   },
                 ),
         ),
+        const SizedBox(height: 8),
+        _buildPaginacion(cs),
       ],
     );
   }
@@ -279,18 +685,35 @@ class _InventarioScreenState extends State<InventarioScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  prod.nombre,
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    _miniatura(prod, size: 56),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        prod.nombre,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _filaDetalle('SKU', prod.skuCodigo),
-                _filaDetalle('Precio de venta',
-                    '\$${prod.precioVenta.toStringAsFixed(2)}'),
-                _filaDetalle('Costo de compra',
-                    '\$${prod.costoUltimo.toStringAsFixed(2)}'),
-                _filaDetalle('Margen', '${prod.margenGanancia.toStringAsFixed(1)}%'),
+                _filaDetalle(
+                  'Precio de venta',
+                  '\$${prod.precioVenta.toStringAsFixed(2)}',
+                ),
+                _filaDetalle(
+                  'Costo de compra',
+                  '\$${prod.costoUltimo.toStringAsFixed(2)}',
+                ),
+                _filaDetalle(
+                  'Margen',
+                  '${prod.margenGanancia.toStringAsFixed(1)}%',
+                ),
                 _filaDetalle(
                   'Stock global',
                   '${prod.stockActual} uds (mínimo ${prod.stockMinimo})',
@@ -298,11 +721,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 ),
                 const SizedBox(height: 14),
                 // Matriz de variantes en acordeón: micro-edición tactil.
-                Text('Variantes',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: cs.onSurface)),
+                Text(
+                  'Variantes',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: cs.onSurface,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 MatrixStockGrid(
                   productoId: prod.productoId,
@@ -358,16 +784,24 @@ class _InventarioScreenState extends State<InventarioScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(etiqueta,
-              style: TextStyle(
-                  fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(
+            etiqueta,
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           Flexible(
             child: Text(
               valor,
               textAlign: TextAlign.right,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: color),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: color,
+              ),
             ),
           ),
         ],
@@ -375,47 +809,25 @@ class _InventarioScreenState extends State<InventarioScreen> {
     );
   }
 
-  /// Móvil (<600): tarjetas con datos críticos (avatar, nombre truncado a 2
-  /// líneas, precio y chip de stock). Tap → bottom sheet con lo secundario.
+  /// Móvil (<600): tarjetas densas con miniatura WebP, nombre truncado a 2
+  /// líneas, precio y chip de stock. Tap → bottom sheet con lo secundario.
   Widget _vistaTarjetasMovil(ColorScheme cs) {
     return ListView.separated(
-      itemCount: _productosFiltrados.length,
+      itemCount: _productos.length,
       separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (context, index) {
-        final prod = _productosFiltrados[index];
+        final prod = _productos[index];
         final bajoStock = prod.stockActual <= prod.stockMinimo;
-          return Card(
-            margin: EdgeInsets.zero,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => _mostrarDetalleProducto(context, prod),
+        return Card(
+          margin: EdgeInsets.zero,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _mostrarDetalleProducto(context, prod),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: bajoStock
-                        ? cs.errorContainer
-                        : cs.primaryContainer,
-                    // Imagen cargada de la API si existe; fallback al ícono.
-                    child: prod.imagenUrl != null && prod.imagenUrl!.isNotEmpty
-                        ? Image.network(
-                            prod.imagenUrl!,
-                            width: 40,
-                            height: 40,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const Icon(Icons.image_not_supported),
-                          )
-                        : Icon(
-                            bajoStock ? Icons.warning_amber : Icons.inventory_2,
-                            color: bajoStock
-                                ? cs.onErrorContainer
-                                : cs.onPrimaryContainer,
-                          ),
-                  ),
+                  _miniatura(prod, size: 44),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -426,7 +838,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Wrap(
@@ -444,7 +858,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: bajoStock
                                     ? cs.error
@@ -471,7 +887,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 ],
               ),
             ),
-              ),
           ),
         );
       },
@@ -500,7 +915,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     child: Text(
                       'Matriz de variantes · ${prod.nombre}',
                       style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -530,7 +947,11 @@ class _InventarioScreenState extends State<InventarioScreen> {
     );
   }
 
-  /// Escritorio (≥600): DataTable con scroll horizontal (columnas fijas).
+  /// Escritorio (≥600): **tabla densa** con miniatura WebP y scroll horizontal.
+  ///
+  /// `dataRowMinHeight/MaxHeight` acotados (44/56) y `headingRowHeight` 44
+  /// permiten ver ~2x más filas que antes; el paginado en servidor garantiza
+  /// que nunca se construyan las 7.000 filas en un solo frame.
   Widget _vistaTablaEscritorio(ColorScheme cs) {
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -539,30 +960,54 @@ class _InventarioScreenState extends State<InventarioScreen> {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            columnSpacing: 24,
+            columnSpacing: 14,
+            horizontalMargin: 12,
+            dataRowMinHeight: 44,
+            dataRowMaxHeight: 56,
+            headingRowHeight: 44,
             columns: const [
+              DataColumn(label: SizedBox(width: 44, child: Text('Img'))),
               DataColumn(label: Text('Ítem')),
               DataColumn(label: Text('SKU')),
+              DataColumn(label: Text('Categoría')),
               DataColumn(label: Text('Precio'), numeric: true),
               DataColumn(label: Text('Margen'), numeric: true),
               DataColumn(label: Text('Stock'), numeric: true),
               DataColumn(label: Text('Acciones')),
             ],
-            rows: _productosFiltrados.map((prod) {
+            rows: _productos.map((prod) {
               final bajoStock = prod.stockActual <= prod.stockMinimo;
+              String? cat;
+              for (final c in _categorias) {
+                if (c.categoriaId == prod.categoriaId) {
+                  cat = c.nombreCategoria;
+                  break;
+                }
+              }
               return DataRow(
                 cells: [
+                  DataCell(_miniatura(prod)),
                   DataCell(
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 260),
+                      constraints: const BoxConstraints(maxWidth: 240),
                       child: Text(
                         prod.nombre,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5),
                       ),
                     ),
                   ),
-                  DataCell(Text(prod.skuCodigo)),
+                  DataCell(
+                    Text(prod.skuCodigo, style: const TextStyle(fontSize: 12)),
+                  ),
+                  DataCell(
+                    Text(
+                      cat ?? '—',
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   DataCell(Text('\$${prod.precioVenta.toStringAsFixed(2)}')),
                   DataCell(Text('${prod.margenGanancia.toStringAsFixed(1)}%')),
                   DataCell(
@@ -572,8 +1017,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
                           : '${prod.stockActual}',
                       style: TextStyle(
                         color: bajoStock ? cs.error : null,
-                        fontWeight:
-                            bajoStock ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: bajoStock
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -583,21 +1029,30 @@ class _InventarioScreenState extends State<InventarioScreen> {
                       children: [
                         IconButton(
                           constraints: const BoxConstraints(
-                              minWidth: 48, minHeight: 48),
-                          icon: Icon(Icons.grid_on_outlined, color: cs.tertiary),
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          icon: Icon(
+                            Icons.grid_on_outlined,
+                            color: cs.tertiary,
+                          ),
                           tooltip: 'Matriz de variantes',
                           onPressed: () => _mostrarMatrizProducto(prod, cs),
                         ),
                         IconButton(
                           constraints: const BoxConstraints(
-                              minWidth: 48, minHeight: 48),
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
                           icon: Icon(Icons.edit_outlined, color: cs.primary),
                           tooltip: 'Editar producto',
                           onPressed: () => _abrirDialogoProducto(prod),
                         ),
                         IconButton(
                           constraints: const BoxConstraints(
-                              minWidth: 48, minHeight: 48),
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
                           icon: Icon(Icons.delete_outline, color: cs.error),
                           tooltip: 'Eliminar producto',
                           onPressed: () => _eliminarProducto(prod),
@@ -629,13 +1084,36 @@ class _InventarioScreenState extends State<InventarioScreen> {
             tooltip: 'Regresar',
             onPressed: () => Navigator.maybePop(context),
           ),
-          title: const Text('Gestión de Inventario'),
+          title: Text(
+            AdrialgaResponsive.isMobile(MediaQuery.sizeOf(context).width)
+                ? 'Inventario'
+                : 'Gestión de Inventario',
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.category),
-              onPressed: _abrirGestionCategorias,
-              tooltip: 'Gestionar categorías',
-            ),
+            if (!AdrialgaResponsive.isMobile(MediaQuery.sizeOf(context).width))
+              IconButton(
+                icon: const Icon(Icons.category),
+                onPressed: _abrirGestionCategorias,
+                tooltip: 'Gestionar categorías',
+              ),
+            if (AdrialgaResponsive.isMobile(MediaQuery.sizeOf(context).width))
+              PopupMenuButton<String>(
+                tooltip: 'Más acciones',
+                onSelected: (value) {
+                  if (value == 'categorias') _abrirGestionCategorias();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'categorias',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.category),
+                      title: Text('Gestionar categorías'),
+                    ),
+                  ),
+                ],
+              ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _cargarDatos,

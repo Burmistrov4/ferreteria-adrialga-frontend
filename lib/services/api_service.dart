@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -12,6 +12,21 @@ import '../models/cliente_model.dart';
 import '../models/factura_model.dart';
 import '../models/producto_model.dart';
 import 'download_service.dart';
+
+/// Resultado paginado del inventario (FASE C).
+///
+/// El catálogo EPA superó los 7.000 ítems: descargar todo al cliente
+/// colapsaba la tabla, así que se pagina en servidor y el total del filtro
+/// viaja en la cabecera `X-Total-Count`.
+class ProductosPaginados {
+  final List<ProductoModel> datos;
+  final int total;
+
+  const ProductosPaginados({required this.datos, required this.total});
+
+  int get cantidad => datos.length;
+  bool get vacio => datos.isEmpty;
+}
 
 class ApiService {
   // ─── Configuración de la URL base de la API ───────────────────────────────
@@ -66,39 +81,63 @@ class ApiService {
     _baseUrlRuntime = prefs.getString('api_base_url');
   }
 
-  // Determinación dinámica de la URL base según la plataforma
+  // Determinación dinámica de la URL base según la plataforma.
   static String get baseUrl {
-    String url;
-    if (_baseUrlOverride.isNotEmpty) {
-      // 1) Override explícito: gana sobre cualquier otro modo.
-      url = _baseUrlOverride;
-    } else if (_baseUrlRuntime != null && _baseUrlRuntime!.isNotEmpty) {
-      // 2) Runtime en vivo (se setea desde el login - LAN universidad).
-      url = _baseUrlRuntime!;
-    } else if (_usarLocal) {
-      // 2) Desarrollo local (solo como fallback cuando no hay override).
-      if (kIsWeb) {
-        url = _urlLocalWeb;
-      } else if (!kIsWeb && Platform.isAndroid) {
-        // En Android la app puede estar corriendo en:
-        //   » Emulador   → 10.0.2.2 apunta al equipo anfitrión;
-        //   » Dispositivo físico con Wi-Fi → usamos la IP LAN directamente.
-        url = _urlLocalLan;
-      } else {
-        url = _urlLocalWeb; // Windows / macOS / iOS Simulator
+    // ── WEB ────────────────────────────────────────────────────────────────
+    // En el despliegue unificado el frontend lo sirve el MISMO backend Node
+    // (puerto :3000), así que la API vive en el MISMO ORIGEN. Se usa una URL
+    // RELATIVA para evitar: CORS, el bloqueo de "red local" de Chrome
+    // (localhost → 192.168.x) y recompilar cada vez que cambia la IP del
+    // Hotspot. Solo si el build define API_BASE_URL (p. ej. GitHub Pages
+    // apuntando a Railway) se respeta esa URL absoluta.
+    if (kIsWeb) {
+      // 1) Selección explícita del selector de entorno (Local Wi-Fi / IP manual).
+      //    Permite apuntar la web a un backend DISTINTO del que la sirvió
+      //    (p. ej. frontend en la nube + backend en la LAN del Hotspot).
+      if (_baseUrlRuntime != null && _baseUrlRuntime!.isNotEmpty) {
+        return _normalizarApi(_baseUrlRuntime!);
       }
+      // 2) Override por --dart-define (staging / GitHub Pages → Railway).
+      if (_baseUrlOverride.isNotEmpty) return _normalizarApi(_baseUrlOverride);
+      // 3) Por defecto: MISMO ORIGEN (el backend sirve la web) → LAN automática.
+      return _webApiBase;
+    }
+
+    // ── NATIVO ─────────────────────────────────────────────────────────────
+    String url;
+    if (_baseUrlRuntime != null && _baseUrlRuntime!.isNotEmpty) {
+      // 1) Selección explícita en el Login (Local Wi-Fi / URL manual).
+      url = _baseUrlRuntime!;
+    } else if (_baseUrlOverride.isNotEmpty) {
+      // 2) Override explícito por --dart-define.
+      url = _baseUrlOverride;
+    } else if (_usarLocal) {
+      // 3) Desarrollo local: emulador Android / dispositivo Wi-Fi / escritorio.
+      url = Platform.isAndroid ? _urlLocalLan : _urlLocalWeb;
     } else {
-      // 3) Producción (por defecto).
+      // 4) Producción (por defecto).
       url = _urlProduccion;
     }
-    if (!url.endsWith('/api')) {
-      if (url.endsWith('/')) {
-        url = '${url}api';
-      } else {
-        url = '$url/api';
-      }
+    return _normalizarApi(url);
+  }
+
+  /// Garantiza que la URL termine en `/api` sin duplicarlo.
+  static String _normalizarApi(String url) {
+    if (url.endsWith('/api')) return url;
+    return url.endsWith('/') ? '${url}api' : '$url/api';
+  }
+
+  /// En web la API vive en el MISMO ORIGEN que la página (el backend Node sirve
+  /// el frontend). Se construye la URL absoluta del mismo origen para no
+  /// depender de la resolución de rutas relativas del cliente HTTP.
+  static String get _webApiBase {
+    try {
+      final origen = Uri.base.origin; // p. ej. http://localhost:3000
+      if (origen.isNotEmpty) return '$origen/api';
+    } catch (_) {
+      // Uri.base sin origen (about:blank): se usa relativo como respaldo.
     }
-    return url;
+    return '/api';
   }
 
   // Token JWT en memoria, persistido en SharedPreferences para reutilizarlo
@@ -118,9 +157,9 @@ class ApiService {
 
   // Headers para peticiones autenticadas (incluyen el token si existe)
   static Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (_token != null) 'Authorization': 'Bearer $_token',
-      };
+    'Content-Type': 'application/json',
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
 
   // Headers para peticiones públicas (login y consultas externas)
   static const Map<String, String> _publicHeaders = {
@@ -139,6 +178,10 @@ class ApiService {
   }
 
   static bool get isLoggedIn => _token != null;
+
+  /// Token de sesión para autenticar el handshake de Socket.IO.
+  /// Se mantiene de solo lectura para no duplicar el almacenamiento JWT.
+  static String? get socketToken => _token;
 
   /// Limpia la sesión local (útil al cerrar sesión).
   static Future<void> logout() async {
@@ -211,7 +254,7 @@ class ApiService {
             headers: _headers,
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((json) => ClienteModel.fromJson(json)).toList();
@@ -232,7 +275,7 @@ class ApiService {
             headers: _headers,
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         return ClienteModel.fromJson(data);
@@ -250,13 +293,11 @@ class ApiService {
     try {
       final response = await http
           .get(
-            Uri.parse(
-              '$baseUrl/clientes/consultar-cliente/$tipoDoc$numDoc',
-            ),
+            Uri.parse('$baseUrl/clientes/consultar-cliente/$tipoDoc$numDoc'),
             headers: _publicHeaders,
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return {
@@ -290,7 +331,7 @@ class ApiService {
             body: jsonEncode(bodyData),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
@@ -310,12 +351,9 @@ class ApiService {
   static Future<List<ClienteModel>> getUltimosClientes([int limit = 10]) async {
     try {
       final response = await http
-          .get(
-            Uri.parse('$baseUrl/clientes?limit=$limit'),
-            headers: _headers,
-          )
+          .get(Uri.parse('$baseUrl/clientes?limit=$limit'), headers: _headers)
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((json) => ClienteModel.fromJson(json)).toList();
@@ -335,7 +373,7 @@ class ApiService {
     final response = await http
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => ClienteModel.fromJson(json)).toList();
@@ -355,7 +393,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) {
         return {'success': true};
       }
@@ -370,7 +408,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/clientes/$id'), headers: _headers)
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 204) {
         return {'success': true};
       }
@@ -385,7 +423,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/categorias'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => CategoriaModel.fromJson(json)).toList();
@@ -394,7 +432,10 @@ class ApiService {
   }
 
   /// Extrae el `message` del backend de una respuesta de error.
-  static String _mensajeErrorRespuesta(http.Response response, String fallback) {
+  static String _mensajeErrorRespuesta(
+    http.Response response,
+    String fallback,
+  ) {
     try {
       final body = jsonDecode(response.body);
       final m = body is Map<String, dynamic> ? body['message'] : null;
@@ -404,7 +445,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> createCategoria(String nombre, String descripcion) async {
+  static Future<Map<String, dynamic>> createCategoria(
+    String nombre,
+    String descripcion,
+  ) async {
     try {
       final response = await http
           .post(
@@ -413,13 +457,16 @@ class ApiService {
             body: jsonEncode({'Nombre': nombre, 'Descripcion': descripcion}),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true};
       }
       return {
         'success': false,
-        'error': _mensajeErrorRespuesta(response, 'Error al crear la categoría'),
+        'error': _mensajeErrorRespuesta(
+          response,
+          'Error al crear la categoría',
+        ),
       };
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -446,17 +493,24 @@ class ApiService {
             body: jsonEncode({'Nombre': nombre, 'Descripcion': descripcion}),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         final dynamic data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) {
           return CategoriaModel.fromJson(data);
         }
         final catId = (data as num?)?.toInt();
-        if (catId != null) return CategoriaModel(categoriaId: catId, nombreCategoria: nombre, descripcion: descripcion);
+        if (catId != null)
+          return CategoriaModel(
+            categoriaId: catId,
+            nombreCategoria: nombre,
+            descripcion: descripcion,
+          );
       } else {
-        ultimoErrorCategoria =
-            _mensajeErrorRespuesta(response, 'Error al crear la categoría');
+        ultimoErrorCategoria = _mensajeErrorRespuesta(
+          response,
+          'Error al crear la categoría',
+        );
       }
       return null;
     } catch (e) {
@@ -477,7 +531,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       return {'success': false, 'error': response.body};
     } catch (e) {
@@ -490,7 +544,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/categorias/$id'), headers: _headers)
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 204) {
         return {'success': true};
       }
@@ -505,12 +559,130 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/productos'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => ProductoModel.fromJson(json)).toList();
     }
     throw Exception('Error al cargar productos');
+  }
+
+  /// Obtiene un producto concreto para precarga contextual (por ejemplo,
+  /// desde una alerta de stock del Dashboard), sin descargar el catálogo.
+  static Future<ProductoModel?> getProductoById(int id) async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/productos/$id'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      return ProductoModel.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+    if (response.statusCode == 404) return null;
+    throw Exception('Error al cargar el producto #$id');
+  }
+
+  // ───────────────────────── FASE C ─────────────────────────
+  // Con el catálogo EPA (>7.000 ítems) ya no es viable descargar todo el
+  // inventario al cliente: se pagina y filtra en servidor.
+
+  /// Host sin el sufijo `/api` (para estáticos servidos por el backend,
+  /// como las imágenes WebP en `/productos/{sku}.webp`).
+  static String get hostUrl {
+    final b = baseUrl;
+    return b.endsWith('/api') ? b.substring(0, b.length - 4) : b;
+  }
+
+  /// URL absoluta de la imagen de un producto. Acepta rutas relativas
+  /// (`/productos/SKU.webp`, las del catálogo EPA) y absolutas (http...).
+  /// Devuelve null si no hay imagen.
+  static String? urlImagen(String? ruta) {
+    if (ruta == null || ruta.trim().isEmpty) return null;
+    final r = ruta.trim();
+    if (r.startsWith('http://') || r.startsWith('https://')) return r;
+    return '$hostUrl${r.startsWith('/') ? r : '/$r'}';
+  }
+
+  /// Inventario paginado/filtrado en SERVIDOR.
+  /// [categoriaIds] permite pedir un subárbol completo (padre + descendientes).
+  /// Devuelve la página y el total que coincide con el filtro (cabecera
+  /// `X-Total-Count`), para paginar sin una segunda petición de conteo.
+  static Future<ProductosPaginados> getProductosPaginados({
+    int limit = 50,
+    int offset = 0,
+    String? q,
+    List<int>? categoriaIds,
+    List<int>? productoIds,
+    bool? conStock,
+    bool? sinStock,
+    int? proveedorId,
+  }) async {
+    final params = <String, String>{'limit': '$limit', 'offset': '$offset'};
+    if (q != null && q.trim().isNotEmpty) params['q'] = q.trim();
+    if (categoriaIds != null && categoriaIds.isNotEmpty) {
+      params['categoriaId'] = categoriaIds.join(',');
+    }
+    if (productoIds != null && productoIds.isNotEmpty) {
+      params['ids'] = productoIds.take(50).join(',');
+    }
+    if (conStock == true && sinStock == true) {
+      throw ArgumentError('No se pueden solicitar ambos filtros de stock.');
+    }
+    if (conStock == true) params['conStock'] = '1';
+    if (sinStock == true) params['sinStock'] = '1';
+    // Filtro por proveedor de compra (0 = sin proveedor atribuible).
+    if (proveedorId != null) params['proveedorId'] = '$proveedorId';
+    final uri = Uri.parse('$baseUrl/productos')
+        .replace(queryParameters: params);
+    final response = await http
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 25));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      final total =
+          int.tryParse(response.headers['x-total-count'] ?? '') ?? data.length;
+      return ProductosPaginados(
+        datos: data.map((json) => ProductoModel.fromJson(json)).toList(),
+        total: total,
+      );
+    }
+    throw Exception('Error al cargar productos');
+  }
+
+  /// Esquema en vivo de la base para el Monitor de BD.
+  /// [modo]: 'presentacion' (12 tablas del modelo expuesto) | 'full' (todas).
+  static Future<Map<String, dynamic>> getMonitorEsquema({
+    String modo = 'presentacion',
+  }) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/monitor/esquema?modo=$modo'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception('Error al cargar el esquema de la base de datos');
+  }
+
+  /// Insights del Asistente de Negocio (Centro de Notificaciones).
+  /// Cada insight trae: id, severidad (critico|atencion|positivo), modulo,
+  /// titulo, mensaje y datos opcionales.
+  static Future<List<Map<String, dynamic>>> getNotificaciones() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/dashboard/notificaciones'), headers: _headers)
+        .timeout(const Duration(seconds: 15));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      final lista = (body['insights'] as List?) ?? const [];
+      return lista.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    throw Exception('Error al cargar notificaciones');
   }
 
   static Future<bool> createProducto(Map<String, dynamic> data) async {
@@ -522,7 +694,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (_) {
       return false;
@@ -538,7 +710,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -550,7 +722,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/productos/$id'))
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (_) {
       return false;
@@ -581,7 +753,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       return {'success': false, 'error': response.body};
     } catch (e) {
@@ -614,7 +786,7 @@ class ApiService {
             body: jsonEncode({'variantes': variantes}),
           )
           .timeout(const Duration(seconds: 15));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'data': jsonDecode(response.body)};
       }
@@ -637,7 +809,7 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       return {'success': false, 'error': _mensajeError(response.body)};
     } catch (e) {
@@ -650,10 +822,12 @@ class ApiService {
   static Future<Map<String, dynamic>> eliminarVariante(int varianteId) async {
     try {
       final response = await http
-          .delete(Uri.parse('$baseUrl/productos/variantes/$varianteId'),
-              headers: _headers)
+          .delete(
+            Uri.parse('$baseUrl/productos/variantes/$varianteId'),
+            headers: _headers,
+          )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       try {
         final body = jsonDecode(response.body);
@@ -674,11 +848,24 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/proveedores'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      // Robustez: un 200 con HTML (proxy mal enrutado, portal cautivo, etc.)
+      // no debe reventar el parseo con un FormatException crudo. Se valida
+      // que el cuerpo JSON sea realmente una lista.
+      try {
+        final data = jsonDecode(response.body);
+        if (data is List) return data;
+      } catch (_) {
+        // cae al throw de abajo con un mensaje accionable
+      }
+      throw Exception(
+        'Respuesta inválida del servidor (se esperaba una lista de proveedores)',
+      );
     }
-    throw Exception('Error al cargar proveedores');
+    throw Exception(
+      'Error al cargar proveedores (HTTP ${response.statusCode})',
+    );
   }
 
   static Future<Map<String, dynamic>> createProveedor(
@@ -692,11 +879,23 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true};
       }
-      return {'success': false, 'error': response.body};
+      // El backend ahora devuelve { success, code, message } estructurado:
+      // se extrae 'message' para mostrarlo directo en la UI (antes llegaba
+      // el cuerpo JSON crudo, ilegible para el cajero).
+      try {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return {
+          'success': false,
+          'error': body['message']?.toString() ?? response.body,
+          if (body['code'] != null) 'code': body['code'].toString(),
+        };
+      } catch (_) {
+        return {'success': false, 'error': response.body};
+      }
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
@@ -715,9 +914,18 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
-      return {'success': false, 'error': response.body};
+      try {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return {
+          'success': false,
+          'error': body['message']?.toString() ?? response.body,
+          if (body['code'] != null) 'code': body['code'].toString(),
+        };
+      } catch (_) {
+        return {'success': false, 'error': response.body};
+      }
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
@@ -730,7 +938,7 @@ class ApiService {
       final response = await http
           .delete(Uri.parse('$baseUrl/proveedores/$id'), headers: _headers)
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200) return {'success': true};
       try {
         final body = jsonDecode(response.body);
@@ -760,14 +968,15 @@ class ApiService {
             body: jsonEncode(data),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, ...decod};
       }
       return {
         'success': false,
-        'error': (decod['error'] as String?) ??
+        'error':
+            (decod['error'] as String?) ??
             (decod['message'] as String?) ??
             response.body,
         'tipo': decod['tipo'] as String?,
@@ -788,7 +997,7 @@ class ApiService {
             body: jsonEncode({'Credencial': usuario, 'Password': password}),
           )
           .timeout(const Duration(seconds: 8));
-          _verificarSesion(response);
+      _verificarSesion(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -806,12 +1015,38 @@ class ApiService {
   }
 
   static Future<double> getTasaCambio() async {
-    // 1) Tasa real del Banco Central de Venezuela vía el backend
+    // 1) Endpoint de cascada del backend: intenta la tasa OFICIAL en vivo
+    //    (microservicio BCV o lectura directa desde Node) y, si no la consigue,
+    //    devuelve la última persistida o la deducida del histórico, siempre
+    //    indicando de dónde salió en `fuente` y con `aviso` cuando no es en vivo.
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/tasa-cambio'))
+          .timeout(const Duration(seconds: 12));
+      _verificarSesion(response);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final tasa = data['tasa'];
+        if (tasa != null) {
+          final v = (tasa as num).toDouble();
+          final fuente = (data['fuente'] ?? '').toString();
+          _lastTasa = v;
+          // Solo es "tasa BCV" si viene del banco en vivo (por cualquiera de
+          // las dos vías). El histórico y el respaldo se marcan como tales para
+          // que la interfaz advierta al usuario.
+          _lastTasaEsBCV = fuente == 'bcv-en-vivo' || fuente == 'bcv-directo';
+          _lastFuenteTasa = fuente;
+          _lastAvisoTasa = data['aviso']?.toString();
+          return v;
+        }
+      }
+    } catch (_) {}
+    // 2) Respaldo: endpoint público que solo consulta la tasa en vivo.
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/clientes/bcv-rate'), headers: _publicHeaders)
-          .timeout(const Duration(seconds: 6));
-          _verificarSesion(response);
+          .timeout(const Duration(seconds: 8));
+      _verificarSesion(response);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final tasa = data['tasa'];
@@ -819,23 +1054,18 @@ class ApiService {
           final v = (tasa as num).toDouble();
           _lastTasa = v;
           _lastTasaEsBCV = true;
+          _lastFuenteTasa = 'bcv-en-vivo';
+          _lastAvisoTasa = null;
           return v;
         }
       }
     } catch (_) {}
-    // 2) Fallback: endpoint de respaldo estático del backend
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/tasa-cambio'))
-          .timeout(const Duration(seconds: 5));
-          _verificarSesion(response);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final tasa = data['tasa'];
-        if (tasa != null) return (tasa as num).toDouble();
-      }
-    } catch (_) {}
     _lastTasa = 36.50;
+    _lastTasaEsBCV = false;
+    _lastFuenteTasa = 'fallback-local';
+    _lastAvisoTasa =
+        'No se pudo contactar al backend para obtener la tasa. Se usa un valor '
+        'de respaldo local.';
     return _lastTasa;
   }
 
@@ -843,16 +1073,25 @@ class ApiService {
   // Útil para que la interfaz advierta cuando el servicio BCV esté caído.
   static double _lastTasa = 36.50;
   static bool _lastTasaEsBCV = false;
+  static String? _lastFuenteTasa;
+  static String? _lastAvisoTasa;
 
   static double get lastTasa => _lastTasa;
   static bool get lastTasaEsBCV => _lastTasaEsBCV;
+
+  /// Origen de la última tasa: `bcv-en-vivo`, `bcv-directo`, `cache-bd`,
+  /// `historico-facturas`, `fallback-seguro` o `fallback-local`.
+  static String? get lastFuenteTasa => _lastFuenteTasa;
+
+  /// Explicación legible de por qué la tasa NO es la oficial en vivo.
+  static String? get lastAvisoTasa => _lastAvisoTasa;
 
   /// Obtiene las métricas del dashboard desde el backend.
   static Future<Map<String, dynamic>> getDashboard() async {
     final response = await http
         .get(Uri.parse('$baseUrl/dashboard'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -871,7 +1110,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -889,14 +1128,16 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 15));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode != 200) {
-      throw Exception('Error al exportar el libro diario (HTTP ${response.statusCode})');
+      throw Exception(
+        'Error al exportar el libro diario (HTTP ${response.statusCode})',
+      );
     }
-    
+
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final filename = 'libro_diario_${periodo}_$timestamp.csv';
-    
+
     // DownloadService maneja automáticamente Web vs Mobile/Desktop
     // usando conditional imports (dart.library.html / dart.library.io)
     await DownloadService.downloadFile(
@@ -904,7 +1145,7 @@ class ApiService {
       filename: filename,
       mimeType: 'text/csv;charset=utf-8',
     );
-    
+
     // En Mobile/Desktop retorna indicador de éxito
     return filename;
   }
@@ -934,7 +1175,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 20));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception(_mensajeError(response.body));
     }
@@ -957,7 +1198,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 20));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception(_mensajeError(response.body));
     }
@@ -983,7 +1224,7 @@ class ApiService {
           headers: _headers,
         )
         .timeout(const Duration(seconds: 20));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode != 200) {
       throw Exception(_mensajeError(response.body));
     }
@@ -1004,6 +1245,30 @@ class ApiService {
     return filename;
   }
 
+  /// Descarga el Resumen de IVA en CSV (normativa SENIAT: ';' + BOM + CRLF),
+  /// listo para adjuntar a la declaración sin re-tipear cifras.
+  static Future<String?> exportarResumenIvaCsv({int? anio, int? mes}) async {
+    final params = _periodoQuery(anio, mes);
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/seniat/resumen-iva')
+              .replace(queryParameters: {...params, 'formato': 'csv'}),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    _verificarSesion(response);
+    if (response.statusCode != 200) {
+      throw Exception(_mensajeError(response.body));
+    }
+    final filename = 'resumen_iva_${params['anio']}-${params['mes']}.csv';
+    await DownloadService.downloadFile(
+      bytes: response.bodyBytes,
+      filename: filename,
+      mimeType: 'text/csv;charset=utf-8',
+    );
+    return filename;
+  }
+
   // --- FACTURACIÓN (POS) ---
   static Future<Map<String, dynamic>> createFactura(
     Map<String, dynamic> facturaData,
@@ -1016,14 +1281,10 @@ class ApiService {
             body: jsonEncode(facturaData),
           )
           .timeout(const Duration(seconds: 12));
-          _verificarSesion(response);
+      _verificarSesion(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decod = _decodificarError(response.body);
-        return {
-          'success': true,
-          'factura': decod['factura'],
-          ...decod,
-        };
+        return {'success': true, 'factura': decod['factura'], ...decod};
       }
       // Expone 'tipo' (CAJA_CERRADA | ARQUEO_PENDIENTE | ...) para que la UI
       // dirija al cajero al módulo correcto con un mensaje accionable.
@@ -1034,7 +1295,10 @@ class ApiService {
         if (decodErr['tipo'] != null) 'tipo': decodErr['tipo'],
       };
     } catch (e) {
-      return {'success': false, 'error': 'No se pudo conectar con el servidor: $e'};
+      return {
+        'success': false,
+        'error': 'No se pudo conectar con el servidor: $e',
+      };
     }
   }
 
@@ -1064,19 +1328,14 @@ class ApiService {
             body: jsonEncode({'pinSupervisor': pinSupervisor}),
           )
           .timeout(const Duration(seconds: 15));
-          _verificarSesion(response);
+      _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return {
-          'success': true,
-          ...decod,
-          'notaCredito': decod['notaCredito'],
-        };
+        return {'success': true, ...decod, 'notaCredito': decod['notaCredito']};
       }
       return {
         'success': false,
-        'error': (decod['error'] as String?) ??
-            'No se pudo reversar la venta',
+        'error': (decod['error'] as String?) ?? 'No se pudo reversar la venta',
         'tipo': (decod['tipo'] as String?) ?? '',
         'codigo': decod,
       };
@@ -1100,12 +1359,15 @@ class ApiService {
             body: jsonEncode({'pin': pin}),
           )
           .timeout(const Duration(seconds: 10));
-          _verificarSesion(response);
+      _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200) {
         return {'valido': true, ...decod};
       }
-      return {'valido': false, 'error': decod['error'] ?? 'PIN de Supervisor inválido'};
+      return {
+        'valido': false,
+        'error': decod['error'] ?? 'PIN de Supervisor inválido',
+      };
     } catch (e) {
       return {'valido': false, 'error': 'No se pudo verificar el PIN: $e'};
     }
@@ -1123,6 +1385,9 @@ class ApiService {
     DateTime? hasta,
   }) async {
     final params = <String, String>{};
+    // El listado usa contrato resumido: detalles/pagos se solicitan solo al
+    // abrir o imprimir una factura concreta.
+    params['resumen'] = 'true';
     if (desde != null && hasta != null) {
       String iso(DateTime d) =>
           '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -1137,12 +1402,26 @@ class ApiService {
     final response = await http
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => FacturaModel.fromJson(json)).toList();
     }
     throw Exception('Error al cargar facturas');
+  }
+
+  /// Obtiene una factura completa, incluidos detalles y pagos, bajo demanda.
+  static Future<FacturaModel> getFacturaById(int id) async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/facturas/$id'), headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      return FacturaModel.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+    throw Exception('Error al cargar la factura #$id');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1154,7 +1433,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/tesoreria/saldo'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -1166,7 +1445,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/tesoreria/patrimonio'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -1190,7 +1469,7 @@ class ApiService {
     final response = await http
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -1202,7 +1481,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/tesoreria/cuentas-pagar'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as List<dynamic>;
     }
@@ -1227,7 +1506,7 @@ class ApiService {
             }),
           )
           .timeout(const Duration(seconds: 12));
-          _verificarSesion(response);
+      _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, ...decod};
@@ -1263,7 +1542,7 @@ class ApiService {
             }),
           )
           .timeout(const Duration(seconds: 12));
-          _verificarSesion(response);
+      _verificarSesion(response);
       final decod = _decodificarError(response.body);
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, ...decod};
@@ -1277,7 +1556,7 @@ class ApiService {
       return {'success': false, 'error': 'No se pudo conectar: $e'};
     }
   }
-// ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
   // APERTURA / CIERRE DE CAJA (arqueo por turno)
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1287,7 +1566,7 @@ class ApiService {
     final response = await http
         .get(Uri.parse('$baseUrl/caja/estado'), headers: _headers)
         .timeout(const Duration(seconds: 10));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -1309,7 +1588,7 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 12));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200 || response.statusCode == 201) {
       return {'success': true, ...jsonDecode(response.body)};
     }
@@ -1332,7 +1611,7 @@ class ApiService {
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 12));
-        _verificarSesion(response);
+    _verificarSesion(response);
     if (response.statusCode == 200 || response.statusCode == 201) {
       return {'success': true, ...jsonDecode(response.body)};
     }
@@ -1351,10 +1630,11 @@ class ApiService {
       'anio': (anio ?? now.year).toString(),
       'mes': (mes ?? now.month).toString(),
     };
-    final uri = Uri.parse('$baseUrl/caja/historico').replace(queryParameters: params);
-    final response = await http.get(uri, headers: _headers).timeout(
-          const Duration(seconds: 12),
-        );
+    final uri = Uri.parse('$baseUrl/caja/historico')
+        .replace(queryParameters: params);
+    final response = await http
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 12));
     _verificarSesion(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1364,10 +1644,86 @@ class ApiService {
     return [];
   }
 
+  // ── Gestión de Usuarios (Módulo de Configuración) ──────────────────────────
+  /// Lista de usuarios (el backend nunca expone las contraseñas).
+  static Future<List<Map<String, dynamic>>> getUsuarios() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/usuarios'), headers: _headers)
+        .timeout(const Duration(seconds: 12));
+    _verificarSesion(response);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as List<dynamic>;
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Crea un colaborador. Devuelve {success, usuario} o {success:false, error}.
+  static Future<Map<String, dynamic>> crearUsuario(
+    Map<String, dynamic> datos,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/usuarios'),
+            headers: _headers,
+            body: jsonEncode(datos),
+          )
+          .timeout(const Duration(seconds: 12));
+      _verificarSesion(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 201) {
+        return {'success': true, 'usuario': body['usuario']};
+      }
+      return {'success': false, 'error': _mensajeError(response.body)};
+    } catch (e) {
+      return {'success': false, 'error': 'Sin conexión: $e'};
+    }
+  }
+
+  /// Actualiza un colaborador (la protección del root la aplica el backend).
+  static Future<Map<String, dynamic>> actualizarUsuario(
+    int id,
+    Map<String, dynamic> datos,
+  ) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/usuarios/$id'),
+            headers: _headers,
+            body: jsonEncode(datos),
+          )
+          .timeout(const Duration(seconds: 12));
+      _verificarSesion(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return {'success': true, 'usuario': body['usuario']};
+      }
+      return {'success': false, 'error': _mensajeError(response.body)};
+    } catch (e) {
+      return {'success': false, 'error': 'Sin conexión: $e'};
+    }
+  }
+
+  /// Desactiva (soft delete) un colaborador.
+  static Future<Map<String, dynamic>> desactivarUsuario(int id) async {
+    try {
+      final response = await http
+          .delete(Uri.parse('$baseUrl/usuarios/$id'), headers: _headers)
+          .timeout(const Duration(seconds: 12));
+      _verificarSesion(response);
+      if (response.statusCode == 200) return {'success': true};
+      return {'success': false, 'error': _mensajeError(response.body)};
+    } catch (e) {
+      return {'success': false, 'error': 'Sin conexión: $e'};
+    }
+  }
+
   /// Extrae el mensaje legible del cuerpo de un error HTTP.
   static String _mensajeError(String body) {
     try {
-      final Map<String, dynamic> json = jsonDecode(body) as Map<String, dynamic>;
+      final Map<String, dynamic> json =
+          jsonDecode(body) as Map<String, dynamic>;
       return (json['error'] as String?) ??
           (json['message'] as String?) ??
           'Ocurrió un error inesperado';

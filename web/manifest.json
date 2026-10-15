@@ -1,12 +1,13 @@
 {
-    "name": "adrialga_frontend",
-    "short_name": "adrialga_frontend",
+    "name": "Adrialga POS — Punto de Venta e Inventario",
+    "short_name": "Adrialga POS",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0F172A",
+    "theme_color": "#3B82F6",
+    "description": "Sistema de punto de venta, inventario, caja y finanzas de Ferretería Adrialga.",
+    "orientation": "landscape",
+    "lang": "es-VE",
     "prefer_related_applications": false,
     "icons": [
         {

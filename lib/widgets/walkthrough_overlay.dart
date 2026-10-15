@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/api_service.dart';
 
 /// Un paso del tutorial interactivo de primer uso.
 ///
@@ -63,6 +66,142 @@ List<WalkthroughStep> walkthroughCajero() => const [
         icono: Icons.savings,
       ),
     ];
+
+/// ─────────────────────── FASE C · Recorridos por módulo ─────────────────────
+///
+/// El onboarding ya no es un único recorrido global que salta al inicio: cada
+/// módulo tiene el suyo y se dispara de forma **contextual** la primera vez que
+/// el usuario entra en él.
+/// ─────────────────────────────────────────────────────────────────────────────
+
+/// POS: cómo cobrar (se muestra al entrar al Punto de Venta por 1ª vez).
+List<WalkthroughStep> walkthroughPos() => const [
+      WalkthroughStep(
+        titulo: '1 · Buscar y añadir',
+        descripcion:
+            'Busque por nombre, SKU o código EPA (F2 enfoca el buscador). Toque '
+            'un resultado para añadirlo al carrito; también puede usar el lector '
+            'de código de barras.',
+        icono: Icons.search,
+      ),
+      WalkthroughStep(
+        titulo: '2 · Ajustar cantidades',
+        descripcion:
+            'En el carrito modifique cantidades con los botones +/− o escriba el '
+            'valor. El sistema valida que no supere el stock disponible.',
+        icono: Icons.playlist_add_check,
+      ),
+      WalkthroughStep(
+        titulo: '3 · Cobrar (bimoneda)',
+        descripcion:
+            'Presione F12 o "Cobrar". Registre el pago en USD y/o Bs: se aplica '
+            'IVA 16% e IGTF 3% sobre divisas y se calcula el vuelto a la Tasa BCV.',
+        icono: Icons.point_of_sale,
+      ),
+      WalkthroughStep(
+        titulo: '4 · Confirmar e imprimir',
+        descripcion:
+            'Revise el total y confirme. Se emite la factura fiscal, se descuenta '
+            'el stock y se asienta el ingreso en la caja del turno abierto.',
+        icono: Icons.receipt_long,
+      ),
+    ];
+
+/// Inventario: cómo usar el filtro en árbol y la tabla densa.
+List<WalkthroughStep> walkthroughInventario() => const [
+      WalkthroughStep(
+        titulo: '1 · Filtro por categoría y proveedor',
+        descripcion:
+            'El catálogo de trabajo está curado. Use los filtros "Categoría Padre", '
+            '"Subcategoría" y ahora también "Proveedor" para navegar en árbol o '
+            'ver solo lo comprado a un proveedor concreto.',
+        icono: Icons.account_tree,
+      ),
+      WalkthroughStep(
+        titulo: '2 · Búsqueda y paginación',
+        descripcion:
+            'Busque por SKU, nombre, marca o código EPA. Los resultados se paginan '
+            'en servidor (25/50/100 por página) para que la tabla siga siendo ágil.',
+        icono: Icons.search,
+      ),
+      WalkthroughStep(
+        titulo: '3 · Miniaturas y acciones',
+        descripcion:
+            'Cada fila muestra la foto del producto servida por el backend. Use los '
+            'botones de la derecha para ver la matriz de variantes, editar o eliminar.',
+        icono: Icons.image_outlined,
+      ),
+    ];
+
+/// Tesorería (solo roles autorizados: ADMIN/GERENTE/SUPERVISOR).
+List<WalkthroughStep> walkthroughTesoreria() => const [
+      WalkthroughStep(
+        titulo: '1 · Apertura de caja',
+        descripcion:
+            'Abra el turno con un fondo base mayor a \$0. Sin turno abierto no se '
+            'registran cobros ni arqueos.',
+        icono: Icons.lock_open,
+      ),
+      WalkthroughStep(
+        titulo: '2 · Arqueo de cierre',
+        descripcion:
+            'Al cerrar, cuente el efectivo y compárelo con el esperado. Las '
+            'diferencias quedan registradas como faltante o sobrante.',
+        icono: Icons.savings,
+      ),
+    ];
+
+/// Persistencia del estado "visto" y disparador contextual (FASE C).
+///
+/// La clave incluye el **rol**, de modo que un Cajero y un Administrador tienen
+/// estados independientes y ningún Cajero ve tutoriales de Tesorería.
+class WalkthroughPrefs {
+  static String _clave(String modulo, String? rol) =>
+      'walkthrough_visto_${modulo}_${(rol ?? 'invitado').toLowerCase()}';
+
+  static Future<bool> yaVisto(String modulo, String? rol) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_clave(modulo, rol)) ?? false;
+  }
+
+  static Future<void> marcarVisto(String modulo, String? rol) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_clave(modulo, rol), true);
+  }
+
+  /// ¿Este rol puede ver el tutorial de este módulo?
+  /// Regla de oro: un CAJERO nunca ve tutoriales de Tesorería.
+  static bool permitido(String modulo, String? rol) {
+    if (modulo != 'tesoreria') return true;
+    final r = (rol ?? '').toUpperCase();
+    return r == 'ADMIN' || r == 'GERENTE' || r == 'SUPERVISOR';
+  }
+
+  /// Disparador contextual: muestra el recorrido la PRIMERA vez que el usuario
+  /// entra al módulo. No hace nada si ya lo vio o si su rol no aplica.
+  static Future<void> mostrarSiAplica(
+    BuildContext context, {
+    required String modulo,
+    required List<WalkthroughStep> pasos,
+  }) async {
+    final rol = ApiService.usuarioRol;
+    if (!permitido(modulo, rol)) return;
+    if (await yaVisto(modulo, rol)) return;
+    if (!context.mounted) return;
+    WalkthroughOverlay.mostrar(
+      context,
+      pasos: pasos,
+      onCompletado: () => marcarVisto(modulo, rol),
+      onOmitido: () => marcarVisto(modulo, rol),
+    );
+  }
+
+  /// Utilidad para "Ver tutorial de nuevo" (p. ej. desde Configuración).
+  static Future<void> reiniciar(String modulo, String? rol) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_clave(modulo, rol));
+  }
+}
 
 /// Overlay de tutorial de primer uso que flota sobre toda la aplicación.
 ///

@@ -1,9 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
 import '../utils/cobro_engine.dart';
-import '../utils/parseo.dart';
 
 class CobroDialog extends StatefulWidget {
   final double totalUSD;
@@ -38,45 +37,57 @@ class _CobroDialogState extends State<CobroDialog> {
   // Montos ingresados por el cajero, acotados a centavos exactos (regla del
   // céntimo fantasma: toda componente se redondea ANTES de sumar, para que
   // las divisiones por tasa nunca creen residuos binarios en la comparación).
-  double get _montoUsdEfectivo =>
-      redondearCentavos(numD(_usdEfectivoController.text));
-  double get _montoVesEfectivo =>
-      redondearCentavos(numD(_vesEfectivoController.text));
-  double get _montoPagoMovil =>
-      redondearCentavos(numD(_pagoMovilController.text));
-  double get _montoPuntoVenta =>
-      redondearCentavos(numD(_puntoVentaController.text));
+  // ===========================================================================
+  // MISION 4 - Cobro en centavos enteros (elimina el centimo fantasma).
+  // Toda decision de UI (pago completo / falta / habilitar) se deriva de
+  // ResultadoCobroCents, que opera con int. Los double restantes solo pintan.
+  // ===========================================================================
+  ResultadoCobroCents get _r {
+    final usdCents = centavosDeTexto(_usdEfectivoController.text);
+    final bsCents =
+        centavosDeTexto(_vesEfectivoController.text) +
+        centavosDeTexto(_pagoMovilController.text) +
+        centavosDeTexto(_puntoVentaController.text);
+    return calcularCobroCents(
+      cargoBaseUSD: widget.totalUSD,
+      tasa: widget.tasaCambio,
+      usdEfectivoCents: usdCents,
+      bsRecibidoCents: bsCents,
+    );
+  }
+
+  // Montos individuales en centavos para el desglose del dialogo.
+  int get _usdEfectivoCents => centavosDeTexto(_usdEfectivoController.text);
+  int get _vesEfectivoCents => centavosDeTexto(_vesEfectivoController.text);
+  int get _pagoMovilCents => centavosDeTexto(_pagoMovilController.text);
+  int get _puntoVentaCents => centavosDeTexto(_puntoVentaController.text);
+
+  // Alias en double SOLO para pintar (legibilidad de los widgets existentes).
+  double get _montoUsdEfectivo => _usdEfectivoCents / 100;
+  double get _montoVesEfectivo => _vesEfectivoCents / 100;
+  double get _montoPagoMovil => _pagoMovilCents / 100;
+  double get _montoPuntoVenta => _puntoVentaCents / 100;
 
   // â”€â”€ IGTF (3%): impuesto que se aplica EXCLUSIVAMENTE a los pagos en
   // divisas extranjeras (aquÃ­, el campo "Efectivo USD"). Se recalcula en
   // tiempo real mientras el cajero ingresa el monto y se muestra su
   // equivalencia en bolÃ­vares con la tasa BCV activa.
-  final double _igtfAliquota = 0.03;
   double get _montoDivisa => _montoUsdEfectivo;
-  double get _igtfUSD => redondearCentavos(_montoDivisa * _igtfAliquota);
-  double get _igtfVES => redondearCentavos(_igtfUSD * widget.tasaCambio);
+  double get _igtfUSD => _r.igtfUSD;
+  double get _igtfVES => _r.igtfVES;
 
   // El total a cobrar incluye el IGTF cuando hay pagos en divisas.
-  double get _cargoTotalUSD => redondearCentavos(widget.totalUSD + _igtfUSD);
+  double get _cargoTotalUSD => _r.cargoTotalUSD;
 
-  double get _totalRecibidoUSD => redondearCentavos(redondearCentavos(_montoUsdEfectivo) +
-      redondearCentavos(_montoVesEfectivo + _montoPagoMovil + _montoPuntoVenta) /
-          widget.tasaCambio);
+  double get _totalRecibidoUSD => _r.recibidoUSD;
 
-  double get _diferenciaUSD =>
-      redondearCentavos(_totalRecibidoUSD - _cargoTotalUSD);
-  double get _diferenciaVES =>
-      redondearCentavos(_diferenciaUSD * widget.tasaCambio);
+  double get _diferenciaUSD => _r.diferenciaUSD;
+  double get _diferenciaVES => _r.diferenciaVES;
 
-  bool get _pagoCompleto => _diferenciaUSD >= -kToleranciaVuelto;
-
-  /// Falta por pagar: solo cuando la diferencia es negativa (deuda); >0 deshabilita
-  /// el pago. Tolerancia de medio centavo USD: los "centimos fantasma" de la
-  /// aritmética binaria se absorben, pero un sub-centavo real bloquea el cobro.
-  double get _faltaPorPagar => _diferenciaUSD < 0 ? _diferenciaUSD.abs() : 0.0;
+  bool get _pagoCompleto => _r.pagoCompleto;
 
   /// Habilita el botón CONFIRMAR PAGO únicamente cuando no hay deuda.
-  bool get _habilitarPago => _faltaPorPagar <= kToleranciaVuelto;
+  bool get _habilitarPago => _r.faltaCents == 0;
 
   void _completarMontoExactoUSD() {
     setState(() {
@@ -119,7 +130,8 @@ class _CobroDialogState extends State<CobroDialog> {
       // (respetando los insets de Material); en tablet/desktop se limita a 520.
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final ancho = constraints.maxWidth.isFinite && constraints.maxWidth < 520
+          final ancho =
+              constraints.maxWidth.isFinite && constraints.maxWidth < 520
               ? constraints.maxWidth
               : 520.0;
           return Container(
@@ -127,215 +139,364 @@ class _CobroDialogState extends State<CobroDialog> {
             padding: const EdgeInsets.all(20.0),
             // Scroll vertical: en mÃ³vil el diÃ¡logo no desborda con el teclado.
             child: SingleChildScrollView(
+              // Compensa el teclado virtual: el contenido queda desplazable
+              // por encima del IME en móvil (evita el "salto" del layout).
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Modulo de Cobro y Pago',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Chip(
-                  avatar: const Icon(Icons.currency_exchange, size: 16),
-                  label: Text(
-                    widget.tasaEsBCV == true
-                        ? 'Tasa BCV: ${widget.tasaCambio.toStringAsFixed(4)} Bs/\$'
-                        : 'Tasa: ${widget.tasaCambio.toStringAsFixed(4)} Bs/\$ (respaldo)',
-                  ),
-                  backgroundColor:
-                      (widget.tasaEsBCV == true)
-                          ? cs.primary.withValues(alpha: 0.15)
-                          : cs.errorContainer,
-                ),
-              ],
-            ),
-            const Divider(),
-            // Resumen de Totales
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    children: [
-                      Text(
-                        'Total USD',
-                        style: TextStyle(
-                            fontSize: 12, color: cs.onSurfaceVariant),
-                      ),
-                      Text(
-                        '\$${widget.totalUSD.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: verde,
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compacto = constraints.maxWidth < 430;
+                      final chip = Chip(
+                        avatar: const Icon(Icons.currency_exchange, size: 16),
+                        label: Text(
+                          widget.tasaEsBCV == true
+                              ? 'BCV ${widget.tasaCambio.toStringAsFixed(4)} Bs/\$'
+                              : 'Respaldo ${widget.tasaCambio.toStringAsFixed(4)} Bs/\$',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
-                  ),
-                  const VerticalDivider(),
-                  Column(
-                    children: [
-                      Text(
-                        'Total VES',
-                        style: TextStyle(
-                            fontSize: 12, color: cs.onSurfaceVariant),
-                      ),
-                      Text(
-                        'Bs. ${_totalVES.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: cs.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Atajos rápidos — Wrap fluido para adaptarse en móvil estrecho.
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _completarMontoExactoUSD,
-                  icon: const Icon(Icons.attach_money, size: 16),
-                  label: const Text('Exacto (USD)'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _completarMontoExactoVES,
-                  icon: const Icon(Icons.money, size: 16),
-                  label: const Text('Exacto (Bs)'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Campos de Pago (responsivos: apilados en pantallas angostas)
-            _camposPago(ancho),
-            const SizedBox(height: 10),
-            // Referencia del pago electrÃ³nico (Pago MÃ³vil / Punto de Venta).
-            // Opcional: se guarda en la factura/pagos incluso si el pago
-            // fue en bolÃ­vares, junto con la tasa BCV usada en ese momento.
-            TextField(
-              controller: _referenciaController,
-              decoration: const InputDecoration(
-                labelText: 'Referencia (opcional - Pago MÃ³vil / Punto)',
-                prefixIcon: Icon(Icons.receipt_long),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Desglose IGTF en tiempo real (3% sobre pagos en divisas)
-            if (_montoDivisa > 0)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: naranja.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: naranja.withValues(alpha: 0.5), width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.account_balance, color: naranja, size: 18),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'IGTF 3% (pagos en divisas)',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                        backgroundColor: widget.tasaEsBCV == true
+                            ? cs.primary.withValues(alpha: 0.15)
+                            : cs.errorContainer,
+                      );
+                      if (compacto) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Módulo de Cobro y Pago',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Align(alignment: Alignment.centerLeft, child: chip),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Módulo de Cobro y Pago',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          chip,
+                        ],
+                      );
+                    },
+                  ),
+                  const Divider(),
+                  // Resumen de Totales
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Column(
+                          children: [
+                            Text(
+                              'Total USD',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            Text(
+                              '\$${widget.totalUSD.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: verde,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const VerticalDivider(),
+                        Column(
+                          children: [
+                            Text(
+                              'Total VES',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            Text(
+                              'Bs. ${_totalVES.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: cs.primary,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Base: \$${_montoDivisa.toStringAsFixed(2)} USD',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    Text(
-                      'IGTF: \$${_igtfUSD.toStringAsFixed(2)} USD'
-                      '  =  Bs. ${_igtfVES.toStringAsFixed(2)} VES',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: naranja,
+                  ),
+                  const SizedBox(height: 12),
+                  // Atajos rápidos — Wrap fluido para adaptarse en móvil estrecho.
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _completarMontoExactoUSD,
+                        icon: const Icon(Icons.attach_money, size: 16),
+                        label: const Text('Exacto (USD)'),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Cargo total incl. IGTF: \$${_cargoTotalUSD.toStringAsFixed(2)} USD',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                      OutlinedButton.icon(
+                        onPressed: _completarMontoExactoVES,
+                        icon: const Icon(Icons.money, size: 16),
+                        label: const Text('Exacto (Bs)'),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            // Bloque de Vuelto / Restante
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _pagoCompleto
-                    ? verde.withValues(alpha: 0.10)
-                    : rojo.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _pagoCompleto ? verde : rojo,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      _pagoCompleto ? 'CAMBIO / VUELTO:' : 'FALTA POR PAGAR:',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _pagoCompleto ? verde : rojo,
-                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Campos de Pago (responsivos: apilados en pantallas angostas)
+                  _camposPago(ancho),
+                  const SizedBox(height: 10),
+                  // Referencia del pago electrÃ³nico (Pago MÃ³vil / Punto de Venta).
+                  // Opcional: se guarda en la factura/pagos incluso si el pago
+                  // fue en bolÃ­vares, junto con la tasa BCV usada en ese momento.
+                  TextField(
+                    controller: _referenciaController,
+                    decoration: const InputDecoration(
+                      labelText: 'Referencia (opcional - Pago MÃ³vil / Punto)',
+                      prefixIcon: Icon(Icons.receipt_long),
+                      border: OutlineInputBorder(),
+                      isDense: true,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '\$${_diferenciaUSD.abs().toStringAsFixed(2)} USD',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: _pagoCompleto ? verde : rojo,
+                  const SizedBox(height: 16),
+                  // Desglose IGTF en tiempo real (3% sobre pagos en divisas)
+                  if (_montoDivisa > 0)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: naranja.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: naranja.withValues(alpha: 0.5),
+                          width: 1,
                         ),
                       ),
-                      Text(
-                        'Bs. ${_diferenciaVES.abs().toStringAsFixed(2)} VES',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _pagoCompleto ? verde : rojo,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.account_balance,
+                                color: naranja,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'IGTF 3% (pagos en divisas)',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Base: \$${_montoDivisa.toStringAsFixed(2)} USD',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            'IGTF: \$${_igtfUSD.toStringAsFixed(2)} USD'
+                            '  =  Bs. ${_igtfVES.toStringAsFixed(2)} VES',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: naranja,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Cargo total incl. IGTF: \$${_cargoTotalUSD.toStringAsFixed(2)} USD',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // Bloque de Vuelto / Restante
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _pagoCompleto
+                          ? verde.withValues(alpha: 0.10)
+                          : rojo.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _pagoCompleto ? verde : rojo,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _pagoCompleto
+                                ? 'CAMBIO / VUELTO:'
+                                : 'FALTA POR PAGAR:',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _pagoCompleto ? verde : rojo,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '\$${_diferenciaUSD.abs().toStringAsFixed(2)} USD',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: _pagoCompleto ? verde : rojo,
+                              ),
+                            ),
+                            Text(
+                              'Bs. ${_diferenciaVES.abs().toStringAsFixed(2)} VES',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _pagoCompleto ? verde : rojo,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    value: _imprimirTicket,
+                    onChanged: (v) =>
+                        setState(() => _imprimirTicket = v ?? false),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    secondary: const Icon(Icons.print, size: 18),
+                    title: const Text(
+                      'Imprimir ticket al facturar',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('CANCELAR'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: cs.primary,
+                            foregroundColor: cs.onPrimary,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          onPressed: _habilitarPago
+                              ? () async {
+                                  // Validar fondos en caja antes de procesar
+                                  final vueltoUSD = _diferenciaUSD > 0
+                                      ? _diferenciaUSD
+                                      : 0.0;
+                                  final vueltoVES = _diferenciaVES > 0
+                                      ? _diferenciaVES
+                                      : 0.0;
+
+                                  // Solo se exige "cambio de gaveta" si el excedente
+                                  // proviene de EFECTIVO fÃ­sico y es un cambio real
+                                  // (â‰¥ media centÃ©sima). Un excedente sub-centavo o
+                                  // generado por Punto de Venta/Pago MÃ³vil NO requiere
+                                  // dinero del cajÃ³n (evita el falso "Fondos insuficientes").
+                                  // Decision en centavos (Mision 4): el cajon solo se
+                                  // abre si hay excedente real de >= 1 centimo, sin el
+                                  // "centimo fantasma" que disparaba falsos "Fondos
+                                  // insuficientes".
+                                  final excesoEfectivoCents =
+                                      _usdEfectivoCents - _r.cargoTotalCents;
+                                  final cargoTotalVESCents =
+                                      (_r.cargoTotalCents * widget.tasaCambio)
+                                          .round();
+                                  final excesoEfectivoVESCents =
+                                      _vesEfectivoCents - cargoTotalVESCents;
+                                  final requiereCambioGaveta =
+                                      excesoEfectivoCents >= 1 ||
+                                      excesoEfectivoVESCents >= 1;
+
+                                  if (requiereCambioGaveta) {
+                                    final puedeDarVuelto =
+                                        await _verificarFondosCaja(
+                                          vueltoUSD: vueltoUSD,
+                                          vueltoVES: vueltoVES,
+                                        );
+                                    if (!puedeDarVuelto) return;
+                                  }
+
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop({
+                                    'montoPagadoUSD': _totalRecibidoUSD,
+                                    'vueltoUSD': vueltoUSD,
+                                    'vueltoVES': vueltoVES,
+                                    'cargoTotalUSD': _cargoTotalUSD,
+                                    'igtfUSD': _igtfUSD,
+                                    'igtfVES': _igtfVES,
+                                    'detallesPago': {
+                                      'efectivoUSD': _montoUsdEfectivo,
+                                      'efectivoVES': _montoVesEfectivo,
+                                      'pagoMovil': _montoPagoMovil,
+                                      'puntoVenta': _montoPuntoVenta,
+                                      // Referencia bancaria (opcional) y tasa usada
+                                      // en el momento del cobro; el backend las
+                                      // persiste en la tabla `pagos` y en la factura.
+                                      'referencia': _referenciaController.text
+                                          .trim(),
+                                      'tasaCambio': widget.tasaCambio,
+                                    },
+                                    'tasaCambio': widget.tasaCambio,
+                                    'imprimirTicket': _imprimirTicket,
+                                  });
+                                }
+                              : null,
+                          icon: const Icon(Icons.check),
+                          label: const Text('CONFIRMAR PAGO'),
                         ),
                       ),
                     ],
@@ -343,97 +504,7 @@ class _CobroDialogState extends State<CobroDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              value: _imprimirTicket,
-              onChanged: (v) => setState(() => _imprimirTicket = v ?? false),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              secondary: const Icon(Icons.print, size: 18),
-              title: const Text(
-                'Imprimir ticket al facturar',
-                style: TextStyle(fontSize: 13),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('CANCELAR'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: cs.primary,
-                      foregroundColor: cs.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: _habilitarPago
-                        ? () async {
-                            // Validar fondos en caja antes de procesar
-                            final vueltoUSD = _diferenciaUSD > 0 ? _diferenciaUSD : 0.0;
-                            final vueltoVES = _diferenciaVES > 0 ? _diferenciaVES : 0.0;
-
-                            // Solo se exige "cambio de gaveta" si el excedente
-                            // proviene de EFECTIVO fÃ­sico y es un cambio real
-                            // (â‰¥ media centÃ©sima). Un excedente sub-centavo o
-                            // generado por Punto de Venta/Pago MÃ³vil NO requiere
-                            // dinero del cajÃ³n (evita el falso "Fondos insuficientes").
-                            final excesoEfectivoUSD =
-                                _montoUsdEfectivo - _cargoTotalUSD;
-                            final excesoEfectivoVES =
-                                _montoVesEfectivo - (_cargoTotalUSD * widget.tasaCambio);
-                            final requiereCambioGaveta =
-                                excesoEfectivoUSD >= 0.005 ||
-                                excesoEfectivoVES >= 0.005;
-
-                            if (requiereCambioGaveta) {
-                              final puedeDarVuelto = await _verificarFondosCaja(
-                                vueltoUSD: vueltoUSD,
-                                vueltoVES: vueltoVES,
-                              );
-                              if (!puedeDarVuelto) return;
-                            }
-                            
-                            if (!context.mounted) return;
-                            Navigator.of(context).pop({
-                              'montoPagadoUSD': _totalRecibidoUSD,
-                              'vueltoUSD': vueltoUSD,
-                              'vueltoVES': vueltoVES,
-                              'cargoTotalUSD': _cargoTotalUSD,
-                              'igtfUSD': _igtfUSD,
-                              'igtfVES': _igtfVES,
-                              'detallesPago': {
-                                'efectivoUSD': _montoUsdEfectivo,
-                                'efectivoVES': _montoVesEfectivo,
-                                'pagoMovil': _montoPagoMovil,
-                                'puntoVenta': _montoPuntoVenta,
-                                // Referencia bancaria (opcional) y tasa usada
-                                // en el momento del cobro; el backend las
-                                // persiste en la tabla `pagos` y en la factura.
-                                'referencia': _referenciaController.text.trim(),
-                                'tasaCambio': widget.tasaCambio,
-                              },
-                              'tasaCambio': widget.tasaCambio,
-                              'imprimirTicket': _imprimirTicket,
-                            });
-                          }
-                        : null,
-                    icon: const Icon(Icons.check),
-                    label: const Text('CONFIRMAR PAGO'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        ),
-      );
+          );
         },
       ),
     );
@@ -451,20 +522,27 @@ class _CobroDialogState extends State<CobroDialog> {
         vueltoVES: vueltoVES,
         tasaCambio: widget.tasaCambio,
       );
-      
+
       final puedeProcesar = resultado['puedeProcesar'] as bool? ?? false;
-      
+
       if (!puedeProcesar && mounted) {
-        final saldoUSD = double.tryParse(resultado['saldoUSD']?.toString() ?? '') ?? 0.0;
-        final saldoVES = double.tryParse(resultado['saldoVES']?.toString() ?? '') ?? 0.0;
-        final faltanteUSD = double.tryParse(resultado['faltanteUSD']?.toString() ?? '') ?? 0.0;
-        final faltanteVES = double.tryParse(resultado['faltanteVES']?.toString() ?? '') ?? 0.0;
-        
+        final saldoUSD =
+            double.tryParse(resultado['saldoUSD']?.toString() ?? '') ?? 0.0;
+        final saldoVES =
+            double.tryParse(resultado['saldoVES']?.toString() ?? '') ?? 0.0;
+        final faltanteUSD =
+            double.tryParse(resultado['faltanteUSD']?.toString() ?? '') ?? 0.0;
+        final faltanteVES =
+            double.tryParse(resultado['faltanteVES']?.toString() ?? '') ?? 0.0;
+
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            icon: Icon(Icons.warning_amber_rounded,
-                        color: Theme.of(ctx).colorScheme.error, size: 48),
+            icon: Icon(
+              Icons.warning_amber_rounded,
+              color: Theme.of(ctx).colorScheme.error,
+              size: 48,
+            ),
             title: const Text('Fondos Insuficientes en Caja'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -472,18 +550,37 @@ class _CobroDialogState extends State<CobroDialog> {
               children: [
                 const Text('No hay saldo suficiente para dar el vuelto.'),
                 const SizedBox(height: 12),
-                Text('Saldo disponible:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  'Saldo disponible:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 Text('  â€¢ USD: \$${saldoUSD.toStringAsFixed(2)}'),
                 Text('  â€¢ VES: Bs. ${saldoVES.toStringAsFixed(2)}'),
                 if (faltanteUSD > 0 || faltanteVES > 0) ...[
                   const SizedBox(height: 8),
-                  Text('Faltante:', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.error)),
-                  if (faltanteUSD > 0) Text('  â€¢ USD: \$${faltanteUSD.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-                  if (faltanteVES > 0) Text('  â€¢ VES: Bs. ${faltanteVES.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                  Text(
+                    'Faltante:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(ctx).colorScheme.error,
+                    ),
+                  ),
+                  if (faltanteUSD > 0)
+                    Text(
+                      '  â€¢ USD: \$${faltanteUSD.toStringAsFixed(2)}',
+                      style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                    ),
+                  if (faltanteVES > 0)
+                    Text(
+                      '  â€¢ VES: Bs. ${faltanteVES.toStringAsFixed(2)}',
+                      style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                    ),
                 ],
                 const SizedBox(height: 12),
-                const Text('Sugerencia: Solicite al cliente el monto exacto o use otro mÃ©todo de pago.',
-                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                const Text(
+                  'Sugerencia: Solicite al cliente el monto exacto o use otro mÃ©todo de pago.',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                ),
               ],
             ),
             actions: [
@@ -495,7 +592,7 @@ class _CobroDialogState extends State<CobroDialog> {
           ),
         );
       }
-      
+
       return puedeProcesar;
     } catch (e) {
       // Si el endpoint no responde, permitir proceso (fail-open para no bloquear ventas)

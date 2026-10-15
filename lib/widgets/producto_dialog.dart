@@ -284,6 +284,123 @@ class _ProductoDialogState extends State<ProductoDialog> {
     return null;
   }
 
+  /// SKU automático por categoría: inyecta el prefijo (`cat.prefijoSku`) en
+  /// el controller del SKU cuando el campo está vacío o todavía contiene el
+  /// prefijo de otra categoría (el usuario aún no lo personalizó).
+  void _aplicarPrefijoSku(CategoriaModel cat) {
+    final actual = _skuController.text.trim();
+    final esAutomatico = actual.isEmpty ||
+        _categorias.any((c) =>
+            c.prefijoSku != null &&
+            c.prefijoSku!.isNotEmpty &&
+            actual == c.prefijoSku!.trim());
+    if (esAutomatico) {
+      _skuController.text = cat.prefijoSku ?? '';
+    }
+  }
+
+  /// Selector de categoría en hoja inferior: usable en móvil (el Autocomplete
+  /// anterior reiniciaba el texto en cada rebuild y se solapaba al teclado).
+  /// Incluye búsqueda local y respeta la selección previa.
+  Future<void> _seleccionarCategoria() async {
+    final busquedaCtrl = TextEditingController();
+    String query = '';
+    final seleccionada = await showModalBottomSheet<CategoriaModel>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        final cs = Theme.of(sheetCtx).colorScheme;
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final filtradas = query.isEmpty
+                ? _categorias
+                : _categorias
+                    .where((c) =>
+                        c.nombreCategoria.toLowerCase().contains(query))
+                    .toList();
+            return SafeArea(
+              child: Padding(
+                // La hoja sube con el teclado de la búsqueda.
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(ctx).size.height * 0.6,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: TextField(
+                          controller: busquedaCtrl,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Buscar categoría',
+                            prefixIcon: Icon(Icons.search),
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (v) => setSheetState(
+                            () => query = v.toLowerCase().trim(),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: filtradas.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Sin coincidencias',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              )
+                            : ListView.builder(
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
+                                itemCount: filtradas.length,
+                                itemBuilder: (_, i) {
+                                  final cat = filtradas[i];
+                                  final activa =
+                                      cat.categoriaId == _selectedCategoriaId;
+                                  return ListTile(
+                                    title: Text(cat.nombreCategoria),
+                                    subtitle:
+                                        (cat.prefijoSku?.isNotEmpty ?? false)
+                                            ? Text(
+                                                'SKU base: ${cat.prefijoSku}')
+                                            : null,
+                                    trailing: activa
+                                        ? Icon(Icons.check_circle,
+                                            color: cs.primary)
+                                        : null,
+                                    selected: activa,
+                                    onTap: () => Navigator.pop(sheetCtx, cat),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    busquedaCtrl.dispose();
+
+    if (seleccionada == null || !mounted) return;
+    setState(() => _selectedCategoriaId = seleccionada.categoriaId);
+    _aplicarPrefijoSku(seleccionada);
+    // Cascada por categoría: aplica SOLO si el usuario no editó el margen.
+    final ms = seleccionada.margenSugerido;
+    if (ms != null && ms > 0 && !_margenEditadoManual) {
+      _margenController.text = ms.toStringAsFixed(2);
+      _margenInicialSugerido = ms;
+      _recalcularPrecioDesdeCostoMargen();
+    }
+  }
+
   String? _validarEntero(String? v) {
     final t = (v ?? '').trim();
     if (t.isEmpty) return 'Requerido';
@@ -317,11 +434,29 @@ class _ProductoDialogState extends State<ProductoDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.producto != null;
-    final generalContent = LayoutBuilder(
-      builder: (context, constraints) {
-        final dosCol = constraints.maxWidth >= 600;
-        final cs = Theme.of(context).colorScheme;
+    // ANTI-FREEZE (Fase 1): este contenido se usa como `content:` de un
+    // `AlertDialog`, que lo mide con `IntrinsicWidth`
+    // (flutter/.../material/dialog.dart:925). Un `LayoutBuilder` NO soporta
+    // dimensiones intrínsecas: lanza `FlutterError("LayoutBuilder does not
+    // support returning intrinsic dimensions")` durante el build y deja el
+    // diálogo sin dibujar sobre la barrera modal opaca.
+    // El breakpoint se deriva del viewport (estable) en vez del layout padre.
+    // `Builder` sí es seguro: no interviene en el layout, solo aporta `context`.
+    final anchoPantalla = MediaQuery.of(context).size.width;
+    final anchoContenido = anchoPantalla < 560 ? anchoPantalla - 56 : 560.0;
+    final dosCol = anchoContenido >= 600;
+    final generalContent = Builder(
+      builder: (innerCtx) {
+        final cs = Theme.of(innerCtx).colorScheme;
         return SingleChildScrollView(
+          // Compensa el teclado virtual: el formulario queda desplazable
+          // sobre el IME en móvil (sin "saltos" del layout al escribir).
+          // `top: 12` separa el primer campo del TabBar para que la etiqueta
+          // flotante del SKU no se monte sobre la pestaña activa.
+          padding: EdgeInsets.only(
+            top: 12,
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: Form(
@@ -362,48 +497,36 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          // Selector escalable con búsqueda integrada:
-                          // el autocompletar filtra localmente al escribir.
-                          child: Autocomplete<CategoriaModel>(
-                            displayStringForOption: (c) => c.nombreCategoria,
-                            optionsBuilder: (textEditingValue) {
-                              final q = textEditingValue.text.toLowerCase().trim();
-                              if (q.isEmpty) return _categorias;
-                              return _categorias.where((c) =>
-                                  c.nombreCategoria.toLowerCase().contains(q));
-                            },
-                            fieldViewBuilder: (context, controller, focusNode, onSubmit) =>
-                                TextField(
-                                  controller: controller
-                                    ..text = _selectedCategoriaId == null
-                                        ? controller.text
-                                        : (_categorias
-                                                .where((c) =>
-                                                    c.categoriaId == _selectedCategoriaId)
-                                                .firstOrNull
-                                                ?.nombreCategoria ??
-                                            controller.text),
-                                  focusNode: focusNode,
-                                  decoration: InputDecoration(
-                                    labelText: 'Categoría *',
-                                    suffixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
-                                  ),
+                          // Selector de categoría por hoja inferior (móvil OK):
+                          // campo readOnly que abre _seleccionarCategoria con
+                          // buscador; al elegirse autogenera el prefijo del SKU.
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(4),
+                            onTap: _seleccionarCategoria,
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: 'Categoría *',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: Icon(Icons.arrow_drop_down,
+                                    color: cs.onSurfaceVariant),
+                              ),
+                              child: Text(
+                                _categorias
+                                        .where((c) =>
+                                            c.categoriaId == _selectedCategoriaId)
+                                        .firstOrNull
+                                        ?.nombreCategoria ??
+                                    'Seleccionar categoría…',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _selectedCategoriaId == null
+                                      ? cs.onSurfaceVariant
+                                      : cs.onSurface,
                                 ),
-                            onSelected: (cat) {
-                              setState(() => _selectedCategoriaId = cat.categoriaId);
-                              final ms = cat.margenSugerido;
-                              // SKU automático por categoría (formato: LEA-0001).
-                              if (_skuController.text.trim().isEmpty) {
-                                _skuController.text = cat.prefijoSku ?? '';
-                              }
-                              // Cascada por categoría: aplica SOLO si el usuario
-                              // no editó el margen a mano.
-                              if (ms != null && ms > 0 && !_margenEditadoManual) {
-                                _margenController.text = ms.toStringAsFixed(2);
-                                _margenInicialSugerido = ms;
-                                _recalcularPrecioDesdeCostoMargen();
-                              }
-                            },
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -603,8 +726,13 @@ class _ProductoDialogState extends State<ProductoDialog> {
                 Tab(text: 'Variantes'),
               ],
             ),
+            // Altura adaptativa a la pantalla: en móviles un SizedBox fijo de
+            // 420px desborda el AlertDialog (BOTTOM OVERFLOWED BY ~20px). Se
+            // usa un % de la altura disponible para que el diálogo quepa con
+            // teclado y sin recortar las pestañas. El contenido interno
+            // (generalContent / VariantesTab) ya es scrollable por sí mismo.
             SizedBox(
-              height: 420,
+              height: MediaQuery.of(context).size.height * 0.55,
               // El ancho máximo se acota en pantallas táctiles
               // (<560) para evitar overflows del TabBarView.
               width: MediaQuery.of(context).size.width < 560

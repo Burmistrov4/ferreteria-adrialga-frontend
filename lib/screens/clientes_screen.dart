@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../models/cliente_model.dart';
 import '../services/api_service.dart';
+import '../services/socket_service.dart';
+import '../utils/responsive.dart';
 import '../widgets/cliente_dialog.dart';
 import '../widgets/hover_tile.dart';
 
@@ -24,12 +26,20 @@ class _ClientesScreenState extends State<ClientesScreen> {
   void initState() {
     super.initState();
     _cargarClientes();
+    SocketService.onDbUpdateModulo(_alDbUpdate);
   }
 
   @override
   void dispose() {
+    SocketService.offDbUpdateModulo(_alDbUpdate);
     _debounce?.cancel();
     super.dispose();
+  }
+
+  void _alDbUpdate(String modulo) {
+    if (!mounted || (modulo != 'clientes' && modulo != '__reconexion__'))
+      return;
+    _cargarClientes();
   }
 
   Future<void> _cargarClientes() async {
@@ -129,89 +139,133 @@ class _ClientesScreenState extends State<ClientesScreen> {
             ),
           ],
         ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'Buscar por Nombre o RIF/Cédula...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Buscar por Nombre o RIF/Cédula...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (val) {
+                  _filtro = val;
+                  _onFiltroChanged(val);
+                },
               ),
-              onChanged: (val) {
-                _filtro = val;
-                _onFiltroChanged(val);
-              },
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : clientesFiltrados.isEmpty
-                  ? const Center(child: Text('No se encontraron clientes.'))
-                  : ListView.builder(
-                      itemCount: clientesFiltrados.length,
-                      itemBuilder: (context, index) {
-                        final cliente = clientesFiltrados[index];
-                        return Card(
-                          elevation: 2,
-                          child: HoverTile(
-                            onTap: () => _abrirDialogoCliente(cliente),
-                            child: ListTile(
-                            leading: CircleAvatar(
-                              child: Text(
-                                cliente.nombreRazonSocial.isNotEmpty
-                                    ? cliente.nombreRazonSocial[0].toUpperCase()
-                                    : 'C',
-                              ),
-                            ),
-                            title: Text(
-                              cliente.nombreRazonSocial,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${cliente.tipoDocumento}-${cliente.numDocumento} | Tel: ${cliente.telefono ?? "N/A"}',
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                                  icon: Icon(Icons.edit, color: cs.primary),
-                                  tooltip: 'Editar cliente',
-                                  onPressed: () => _abrirDialogoCliente(cliente),
-                                ),
-                                if (cliente.clienteId != null)
-                                  IconButton(
-                                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                                    icon: Icon(
-                                      Icons.delete,
-                                      color: cs.error,
-                                    ),
-                                    tooltip: 'Eliminar cliente',
-                                    onPressed: () => _eliminarCliente(cliente),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : clientesFiltrados.isEmpty
+                    ? const Center(child: Text('No se encontraron clientes.'))
+                    : ListView.builder(
+                        itemCount: clientesFiltrados.length,
+                        itemBuilder: (context, index) {
+                          final cliente = clientesFiltrados[index];
+                          return Card(
+                            elevation: 2,
+                            child: HoverTile(
+                              onTap: () => _abrirDialogoCliente(cliente),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  child: Text(
+                                    cliente.nombreRazonSocial.isNotEmpty
+                                        ? cliente.nombreRazonSocial[0]
+                                              .toUpperCase()
+                                        : 'C',
                                   ),
-                              ],
+                                ),
+                                title: Text(
+                                  cliente.nombreRazonSocial,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${cliente.tipoDocumento}-${cliente.numDocumento} | Tel: ${cliente.telefono ?? "N/A"}',
+                                ),
+                                trailing:
+                                    AdrialgaResponsive.isMobile(
+                                      MediaQuery.sizeOf(context).width,
+                                    )
+                                    ? PopupMenuButton<String>(
+                                        tooltip: 'Acciones del cliente',
+                                        onSelected: (value) {
+                                          if (value == 'editar')
+                                            _abrirDialogoCliente(cliente);
+                                          if (value == 'eliminar')
+                                            _eliminarCliente(cliente);
+                                        },
+                                        itemBuilder: (_) => [
+                                          const PopupMenuItem(
+                                            value: 'editar',
+                                            child: ListTile(
+                                              contentPadding: EdgeInsets.zero,
+                                              leading: Icon(Icons.edit),
+                                              title: Text('Editar cliente'),
+                                            ),
+                                          ),
+                                          if (cliente.clienteId != null)
+                                            const PopupMenuItem(
+                                              value: 'eliminar',
+                                              child: ListTile(
+                                                contentPadding: EdgeInsets.zero,
+                                                leading: Icon(Icons.delete),
+                                                title: Text('Eliminar cliente'),
+                                              ),
+                                            ),
+                                        ],
+                                      )
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            constraints: const BoxConstraints(
+                                              minWidth: 48,
+                                              minHeight: 48,
+                                            ),
+                                            icon: Icon(
+                                              Icons.edit,
+                                              color: cs.primary,
+                                            ),
+                                            tooltip: 'Editar cliente',
+                                            onPressed: () =>
+                                                _abrirDialogoCliente(cliente),
+                                          ),
+                                          if (cliente.clienteId != null)
+                                            IconButton(
+                                              constraints: const BoxConstraints(
+                                                minWidth: 48,
+                                                minHeight: 48,
+                                              ),
+                                              icon: Icon(
+                                                Icons.delete,
+                                                color: cs.error,
+                                              ),
+                                              tooltip: 'Eliminar cliente',
+                                              onPressed: () =>
+                                                  _eliminarCliente(cliente),
+                                            ),
+                                        ],
+                                      ),
+                              ),
                             ),
-                          ),
-                            ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          onPressed: () => _abrirDialogoCliente(),
+          child: const Icon(Icons.add),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: cs.primary,
-        foregroundColor: cs.onPrimary,
-        onPressed: () => _abrirDialogoCliente(),
-        child: const Icon(Icons.add),
-      ),
-    ),
-  );
-}
+    );
+  }
 }

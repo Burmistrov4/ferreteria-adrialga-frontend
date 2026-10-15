@@ -46,10 +46,25 @@ class FacturaModel {
   static String _s(dynamic v) => (v ?? '').toString();
 
   factory FacturaModel.fromJson(Map<String, dynamic> json) {
-    final detallesRaw = (json['detalle_facturas'] ?? json['Detalle_Facturas'] ??
-            json['detalles'] ??
-            [])
-        as List<dynamic>? ?? [];
+    // FASE 3: `as List<dynamic>?` lanzaba TypeError si el backend respondia
+    // un Map de error o null. Ahora se verifica el tipo con `is`.
+    final detallesRawRaw = json['detalle_facturas'] ??
+        json['Detalle_Facturas'] ??
+        json['detalles'];
+    final List<dynamic> detallesRaw =
+        detallesRawRaw is List ? detallesRawRaw : const <dynamic>[];
+
+    // Misma proteccion para los pagos: nunca se castea a ciegas.
+    final pagosRawRaw = json['pagos'] ?? json['Pagos'];
+    final List<dynamic> pagosRaw =
+        pagosRawRaw is List ? pagosRawRaw : const <dynamic>[];
+
+    // Relaciones embebidas (`clientes`, `usuarios`). Si llegan como List o
+    // como escalar, `?['campo']` lanza NoSuchMethodError; se normaliza a Map.
+    Map<dynamic, dynamic> rel(String clave) {
+      final v = json[clave] ?? json[clave.toLowerCase()];
+      return v is Map ? v : const <dynamic, dynamic>{};
+    }
 
     return FacturaModel(
       facturaId: _i(json['Factura_ID'] ?? json['facturaId'] ?? json['id']),
@@ -66,40 +81,30 @@ class FacturaModel {
       clienteId: _i(json['Cliente_ID'] ?? json['clienteId']),
       usuarioId: _i(json['Usuario_ID'] ?? json['usuarioId']),
       clienteNombre: _s(
-        json['clientes']?['Razon_Social'] ??
-            json['clientes']?['razonSocial'] ??
-            '',
+        rel('clientes')['Razon_Social'] ?? rel('clientes')['razonSocial'] ?? '',
       ),
       clienteRif: _s(
-        json['clientes']?['RIF_Cedula'] ??
-            json['clientes']?['rifCedula'] ??
-            '',
+        rel('clientes')['RIF_Cedula'] ?? rel('clientes')['rifCedula'] ?? '',
       ),
       clienteDireccion: _s(
-        json['clientes']?['Direccion'] ??
-            json['clientes']?['direccion'] ??
-            '',
+        rel('clientes')['Direccion'] ?? rel('clientes')['direccion'] ?? '',
       ),
       clienteTelefono: _s(
-        json['clientes']?['Telefono'] ??
-            json['clientes']?['telefono'] ??
-            '',
+        rel('clientes')['Telefono'] ?? rel('clientes')['telefono'] ?? '',
       ),
       usuarioNombre: _s(
-        json['usuarios']?['Nombre'] ??
-            json['usuarios']?['nombre'] ??
-            '',
+        rel('usuarios')['Nombre'] ?? rel('usuarios')['nombre'] ?? '',
       ),
+      // FASE 3: se descartan los elementos que no son Map en vez de
+      // propagar el casteo dinamico (antes: `fromJson(d)` con d:dynamic).
       detalles: detallesRaw
-          .map((d) => DetalleFacturaModel.fromJson(d))
+          .whereType<Map>()
+          .map((d) => DetalleFacturaModel.fromJson(Map<String, dynamic>.from(d)))
           .toList(),
-      pagos:
-          ((json['pagos'] ?? json['Pagos']) as List<dynamic>?)
-              ?.map(
-                (e) => PagoFacturaModel.fromJson(e as Map<String, dynamic>),
-              )
-              .toList() ??
-          [],
+      pagos: pagosRaw
+          .whereType<Map>()
+          .map((e) => PagoFacturaModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 }

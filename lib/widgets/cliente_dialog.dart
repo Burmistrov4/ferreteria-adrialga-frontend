@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -186,7 +186,8 @@ class _ClienteDialogState extends State<ClienteDialog>
       return;
     }
     // 404: no existe en el registro | Error de red/timeout: mensaje con icono
-    final era404 = (res['error']?.toString() ?? '').contains('404') ||
+    final era404 =
+        (res['error']?.toString() ?? '').contains('404') ||
         (res['error']?.toString() ?? '').toLowerCase().contains('no se ha');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -206,7 +207,7 @@ class _ClienteDialogState extends State<ClienteDialog>
                 era404
                     ? 'SENIAT no tiene datos para esa cédula/RIF.'
                     : (res['error'] ??
-                        'Sin conexión con el servicio SENIAT. Intente de nuevo.'),
+                          'Sin conexión con el servicio SENIAT. Intente de nuevo.'),
                 style: const TextStyle(color: Colors.white),
               ),
             ),
@@ -257,15 +258,13 @@ class _ClienteDialogState extends State<ClienteDialog>
       final ClienteModel guardado = esEdicion
           ? nuevoCliente
           : (res['cliente'] is ClienteModel
-              ? res['cliente'] as ClienteModel
-              : nuevoCliente);
+                ? res['cliente'] as ClienteModel
+                : nuevoCliente);
       Navigator.of(context).pop(guardado);
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            res['error']?.toString() ?? 'Error al guardar cliente',
-          ),
+          content: Text(res['error']?.toString() ?? 'Error al guardar cliente'),
         ),
       );
     }
@@ -280,7 +279,9 @@ class _ClienteDialogState extends State<ClienteDialog>
     // 92% de la pantalla; en escritorio se limita a 560 px de ancho para que
     // no se estire deforme en monitores grandes. La altura nunca es fija:
     // el contenido fluye dentro de un rango con scroll interno garantizado.
-    final dialogWidth = screenSize.width < 600 ? screenSize.width * 0.92 : 560.0;
+    final dialogWidth = screenSize.width < 600
+        ? screenSize.width * 0.92
+        : 560.0;
     final dialogMaxHeight = screenSize.height * 0.90;
 
     return Dialog(
@@ -296,6 +297,9 @@ class _ClienteDialogState extends State<ClienteDialog>
           children: [
             TabBar(
               controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               labelColor: colorScheme.primary,
               // Contraste dinámico: en oscuro usa onSurfaceVariant, en claro
               // el gris de Material hereda del tema y se garantiza legible.
@@ -332,10 +336,7 @@ class _ClienteDialogState extends State<ClienteDialog>
         children: [
           const Text(
             'Búsqueda por Nombre, Cédula o RIF',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -350,20 +351,18 @@ class _ClienteDialogState extends State<ClienteDialog>
                       child: SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
                   : (_searchDocController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchDocController.clear();
-                            _onSearchChanged('');
-                          },
-                        )
-                      : null),
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchDocController.clear();
+                              _onSearchChanged('');
+                            },
+                          )
+                        : null),
             ),
             onChanged: _onSearchChanged,
             onSubmitted: (_) => _buscarClienteLocal(),
@@ -410,9 +409,7 @@ class _ClienteDialogState extends State<ClienteDialog>
                         ),
                         title: Text(
                           c.nombreRazonSocial,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Text(
                           '${c.tipoDocumento}-${c.numDocumento}'
@@ -512,7 +509,8 @@ class _ClienteDialogState extends State<ClienteDialog>
                               labelText: 'Cédula / RIF (Sin Guiones)',
                               border: OutlineInputBorder(),
                               isDense: true,
-                              helperText: '7 a 9 dígitos, sin guiones ni puntos',
+                              helperText:
+                                  '7 a 9 dígitos, sin guiones ni puntos',
                             ),
                           ),
                         ),
@@ -534,7 +532,9 @@ class _ClienteDialogState extends State<ClienteDialog>
                                   ),
                                 )
                               : const Icon(Icons.cloud_download, size: 18),
-                          label: Text(_isConsultingSeniat ? 'Buscando…' : 'SENIAT'),
+                          label: Text(
+                            _isConsultingSeniat ? 'Buscando…' : 'SENIAT',
+                          ),
                         ),
                       ],
                     ),
@@ -606,7 +606,9 @@ class _ClienteDialogState extends State<ClienteDialog>
                                   ),
                                 )
                               : const Icon(Icons.cloud_download, size: 18),
-                          label: Text(_isConsultingSeniat ? 'Buscando…' : 'SENIAT'),
+                          label: Text(
+                            _isConsultingSeniat ? 'Buscando…' : 'SENIAT',
+                          ),
                         ),
                       ),
                     ],
@@ -627,8 +629,10 @@ class _ClienteDialogState extends State<ClienteDialog>
               },
               inputFormatters: [
                 // Forzar mayúsculas en la Razón Social (fiscal).
-                TextInputFormatter.withFunction((oldValue, newValue) =>
-                    newValue.copyWith(text: newValue.text.toUpperCase())),
+                TextInputFormatter.withFunction(
+                  (oldValue, newValue) =>
+                      newValue.copyWith(text: newValue.text.toUpperCase()),
+                ),
               ],
               decoration: const InputDecoration(
                 labelText: 'Nombre / Razón Social *',
@@ -719,9 +723,7 @@ class _ClienteDialogState extends State<ClienteDialog>
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.check_circle),
                 label: const Text('GUARDAR Y SELECCIONAR'),

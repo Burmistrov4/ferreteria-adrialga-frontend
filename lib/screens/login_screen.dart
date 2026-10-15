@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import '../services/login_url.dart';
 import '../widgets/app_shell.dart';
+import 'monitor_db_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -59,8 +61,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
 
-    // Si está en modo local, fija la URL base al momento del login y persiste
-    // en disco (para no requerir reingresar la IP cada vez que se abra la app).
+    // Fija la URL base al momento del login y la persiste. Si NO se usa local,
+    // se limpia cualquier runtime guardado → en web vuelve al mismo origen.
     if (_usarLocal) {
       final ip = _ipController.text.trim();
       if (ip.isEmpty) {
@@ -72,9 +74,19 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
-      final url = ip.startsWith('http')
-          ? ip.trim()
-          : 'http://$ip:3000/api';
+      // Normaliza siempre a http(s)://host[:puerto]/api. Antes, si el campo
+      // empezaba con "http" se usaba tal cual sin completar ':3000' → el login
+      // se posteba al puerto 80 ("servidor fuera de línea").
+      final url = normalizarUrlLocal(ip);
+      if (url.isEmpty) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('IP/host inválido (ej. 192.168.98.153)'),
+          ),
+        );
+        return;
+      }
       ApiService.setBaseUrlRuntime(url);
     } else {
       ApiService.setBaseUrlRuntime(null); // producción por defecto
@@ -158,38 +170,44 @@ class _LoginScreenState extends State<LoginScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    // ── Selector de entorno (para pruebas locales por LAN) ──
-                    SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(
-                          value: false,
-                          label: Text('Producción'),
-                          icon: Icon(Icons.cloud_done),
-                        ),
-                        ButtonSegment(
-                          value: true,
-                          label: Text('Local Wi-Fi'),
-                          icon: Icon(Icons.wifi),
+                    // ── Selector de entorno (nativo y web) ──
+                    // En el despliegue unificado (el backend sirve la web) la API
+                    // es del mismo origen, así que "Producción" = este mismo
+                    // servidor. "Local Wi-Fi" permite apuntar a otra IP:3000
+                    // (frontend en la nube + backend en la LAN del Hotspot).
+                    ...[
+                      const SizedBox(height: 16),
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            label: Text('Producción'),
+                            icon: Icon(Icons.cloud_done),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text('Local Wi-Fi'),
+                            icon: Icon(Icons.wifi),
+                          ),
+                        ],
+                        selected: {_usarLocal},
+                        onSelectionChanged: (s) =>
+                            setState(() => _usarLocal = s.first),
+                      ),
+                      if (_usarLocal) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _ipController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'IP de esta laptop/servidor',
+                            hintText: '192.168.98.153',
+                            prefixIcon: Icon(Icons.wifi_tethering),
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ],
-                      selected: {_usarLocal},
-                      onSelectionChanged: (s) =>
-                          setState(() => _usarLocal = s.first),
-                    ),
-                    if (_usarLocal) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _ipController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'IP de esta laptop/servidor',
-                          hintText: '192.168.98.153',
-                          prefixIcon: Icon(Icons.wifi_tethering),
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
                     ],
                     const SizedBox(height: 24),
                     SizedBox(
@@ -213,6 +231,30 @@ class _LoginScreenState extends State<LoginScreen> {
                                 'INGRESAR',
                                 style: TextStyle(fontSize: 16),
                               ),
+                      ),
+                    ),
+                    // ── Acceso discreto al Monitor de Base de Datos ──
+                    // Abre el diagrama en vivo del esquema. En modo
+                    // presentación se muestran las 12 tablas del modelo.
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Opacity(
+                        opacity: 0.55,
+                        child: TextButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const MonitorDbScreen(
+                                modoInicial: 'presentacion',
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.storage, size: 15),
+                          label: const Text(
+                            'Monitor de BD',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
                       ),
                     ),
                   ],

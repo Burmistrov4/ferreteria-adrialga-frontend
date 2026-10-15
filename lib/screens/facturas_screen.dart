@@ -4,6 +4,8 @@ import '../models/factura_model.dart';
 import '../services/api_service.dart';
 import '../services/factura_pdf_service.dart';
 import '../services/navigation_service.dart';
+import '../services/socket_service.dart';
+import '../utils/responsive.dart';
 import '../widgets/factura_detalle_dialog.dart';
 
 /// Registro de Facturas: historial de ventas con opción de imprimir en PDF.
@@ -40,12 +42,26 @@ class _FacturasScreenState extends State<FacturasScreen> {
   @override
   void initState() {
     super.initState();
+    // AppShell usa IndexedStack: la pantalla permanece viva después de su
+    // primera carga. Sin esta suscripción, una venta hecha en otro terminal
+    // deja la lista de facturas obsoleta hasta una recarga manual.
+    SocketService.onDbUpdateModulo(_alRecibirDbUpdate);
     final inicial = widget.periodoInicial;
-    if (inicial != null &&
-        ['hoy', 'semana', 'mes', 'anio'].contains(inicial)) {
+    if (inicial != null && ['hoy', 'semana', 'mes', 'anio'].contains(inicial)) {
       _filtro = inicial;
     }
     _cargar();
+  }
+
+  void _alRecibirDbUpdate(String modulo) {
+    if (!mounted || (modulo != 'ventas' && modulo != '__reconexion__')) return;
+    _cargar();
+  }
+
+  @override
+  void dispose() {
+    SocketService.offDbUpdateModulo(_alRecibirDbUpdate);
+    super.dispose();
   }
 
   Future<void> _cargar() async {
@@ -89,11 +105,32 @@ class _FacturasScreenState extends State<FacturasScreen> {
     }).toList();
   }
 
+  Future<FacturaModel?> _cargarFacturaCompleta(FacturaModel resumen) async {
+    try {
+      return await ApiService.getFacturaById(resumen.facturaId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al cargar factura: $e')));
+      }
+      return null;
+    }
+  }
+
   Future<void> _verDetalle(FacturaModel f) async {
+    final completa = await _cargarFacturaCompleta(f);
+    if (completa == null || !mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (_) => FacturaDetalleDialog(factura: f, tasa: _tasa),
+      builder: (_) => FacturaDetalleDialog(factura: completa, tasa: _tasa),
     );
+  }
+
+  Future<void> _imprimirFactura(FacturaModel f) async {
+    final completa = await _cargarFacturaCompleta(f);
+    if (completa == null || !mounted) return;
+    await FacturaPdfService.imprimir(completa, tasa: _tasa);
   }
 
   String _fmtFecha(DateTime? dt) {
@@ -159,7 +196,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
             avatar: Icon(
               Icons.date_range,
               size: 18,
-              color: _filtro == 'personalizado' ? cs.onPrimaryContainer : cs.outline,
+              color: _filtro == 'personalizado'
+                  ? cs.onPrimaryContainer
+                  : cs.outline,
             ),
             label: Text(
               _filtro == 'personalizado' && _rangoCustom != null
@@ -228,7 +267,9 @@ class _FacturasScreenState extends State<FacturasScreen> {
                   _buildBarraFiltros(context),
                   Expanded(
                     child: _filtradas.isEmpty
-                        ? const Center(child: Text('No hay facturas registradas'))
+                        ? const Center(
+                            child: Text('No hay facturas registradas'),
+                          )
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                             itemCount: _filtradas.length,
@@ -243,49 +284,89 @@ class _FacturasScreenState extends State<FacturasScreen> {
                                   cursor: SystemMouseCursors.click,
                                   child: ListTile(
                                     onTap: () => _verDetalle(f),
-                                  leading: CircleAvatar(
-                                    backgroundColor: cs.primaryContainer,
-                                    child: Icon(
-                                      Icons.receipt_long,
-                                      color: cs.onPrimaryContainer,
-                                    ),
-                                  ),
-                                  title: Text(
-                                    '${f.numeroControl ?? "FV-${f.facturaId}"} • ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    '${_fmtFecha(f.fechaEmision)} • \$${f.totalGeneral.toStringAsFixed(2)}',
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                                        icon: Icon(
-                                          Icons.visibility,
-                                          color: cs.primary,
-                                        ),
-                                        tooltip: 'Ver detalle',
-                                        onPressed: () => _verDetalle(f),
+                                    leading: CircleAvatar(
+                                      backgroundColor: cs.primaryContainer,
+                                      child: Icon(
+                                        Icons.receipt_long,
+                                        color: cs.onPrimaryContainer,
                                       ),
-                                      IconButton(
-                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                                        icon: Icon(
-                                          Icons.print,
-                                          color: cs.secondary,
-                                        ),
-                                        tooltip: 'Imprimir',
-                                        onPressed: () =>
-                                            FacturaPdfService.imprimir(
-                                              f,
-                                              tasa: _tasa,
-                                            ),
+                                    ),
+                                    title: Text(
+                                      '${f.numeroControl ?? "FV-${f.facturaId}"} • ${f.clienteNombre!.isNotEmpty ? f.clienteNombre : "Consumidor Final"}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    subtitle: Text(
+                                      '${_fmtFecha(f.fechaEmision)} • \$${f.totalGeneral.toStringAsFixed(2)}',
+                                    ),
+                                    trailing:
+                                        AdrialgaResponsive.isMobile(
+                                          MediaQuery.sizeOf(context).width,
+                                        )
+                                        ? PopupMenuButton<String>(
+                                            tooltip: 'Acciones de factura',
+                                            onSelected: (value) {
+                                              if (value == 'detalle')
+                                                _verDetalle(f);
+                                              if (value == 'imprimir')
+                                                _imprimirFactura(f);
+                                            },
+                                            itemBuilder: (_) => const [
+                                              PopupMenuItem(
+                                                value: 'detalle',
+                                                child: ListTile(
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                  leading: Icon(
+                                                    Icons.visibility,
+                                                  ),
+                                                  title: Text('Ver detalle'),
+                                                ),
+                                              ),
+                                              PopupMenuItem(
+                                                value: 'imprimir',
+                                                child: ListTile(
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                  leading: Icon(Icons.print),
+                                                  title: Text('Imprimir'),
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              IconButton(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      minWidth: 48,
+                                                      minHeight: 48,
+                                                    ),
+                                                icon: Icon(
+                                                  Icons.visibility,
+                                                  color: cs.primary,
+                                                ),
+                                                tooltip: 'Ver detalle',
+                                                onPressed: () => _verDetalle(f),
+                                              ),
+                                              IconButton(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      minWidth: 48,
+                                                      minHeight: 48,
+                                                    ),
+                                                icon: Icon(
+                                                  Icons.print,
+                                                  color: cs.secondary,
+                                                ),
+                                                tooltip: 'Imprimir',
+                                                onPressed: () =>
+                                                    _imprimirFactura(f),
+                                              ),
+                                            ],
+                                          ),
                                   ),
                                 ),
                               );

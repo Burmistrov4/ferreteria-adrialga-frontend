@@ -1,0 +1,62 @@
+[
+  {
+    "destino": "Inicio",
+    "etiqueta": "Inicio Pestaña 1 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Vender",
+    "etiqueta": "Vender ahora",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Facturas",
+    "etiqueta": "Facturas Pestaña 3 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Clientes",
+    "etiqueta": "Clientes Pestaña 4 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Productos",
+    "etiqueta": "Productos Pestaña 5 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Compras",
+    "etiqueta": "Compras Pestaña 6 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Proveedores",
+    "etiqueta": "Proveedores Pestaña 7 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Caja y Finanzas",
+    "etiqueta": "Caja y Finanzas Pestaña 8 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Ajustes",
+    "etiqueta": "Ajustes Pestaña 9 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  },
+  {
+    "destino": "Guía",
+    "etiqueta": "Guía Pestaña 10 de 10",
+    "ok": true,
+    "pageErrorsNuevos": 0
+  }
+]

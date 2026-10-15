@@ -1,3 +1,5 @@
+import '../utils/parseo.dart';
+
 class ClienteModel {
   final int? clienteId;
   final String rifCedula;
@@ -64,8 +66,14 @@ class ClienteModel {
       num = rif;
     }
 
+    // FASE 3: `clienteId` es `int?`. Si el backend manda "7" (string) el
+    // casteo implicito a int? lanza TypeError. numI devuelve null cuando no
+    // hay valor, preservando la semantica de "cliente sin persistir".
+    final idCrudo = json['clienteId'] ?? json['Cliente_ID'] ?? json['id'];
+    final int? idCliente = idCrudo == null ? null : numI(idCrudo);
+
     return ClienteModel(
-      clienteId: json['clienteId'] ?? json['Cliente_ID'] ?? json['id'],
+      clienteId: idCliente,
       tipoDocumento: tipo,
       numDocumento: num,
       rifCedula: rif.isNotEmpty ? rif : '$tipo-$num',
@@ -74,9 +82,10 @@ class ClienteModel {
           json['Razon_Social'] ??
           json['nombre'] ??
           '',
-      direccion: json['direccion'] ?? json['Direccion'],
-      telefono: json['telefono'] ?? json['Telefono'],
-      email: json['email'] ?? json['Email'],
+      // '' -> null: no se persisten cadenas vacias en campos opcionales.
+      direccion: textoO(json['direccion'] ?? json['Direccion']),
+      telefono: textoO(json['telefono'] ?? json['Telefono']),
+      email: textoO(json['email'] ?? json['Email']),
     );
   }
 

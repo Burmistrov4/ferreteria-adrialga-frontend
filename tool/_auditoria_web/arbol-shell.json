@@ -1,0 +1,712 @@
+[
+  {
+    "etiqueta": "Adrialga",
+    "rol": "",
+    "x": 63,
+    "y": 70,
+    "w": 54,
+    "h": 20,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Inicio Pestaña 1 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 110,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Vender Pestaña 2 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 154,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Facturas Pestaña 3 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 198,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Clientes Pestaña 4 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 242,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Productos Pestaña 5 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 286,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Compras Pestaña 6 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 330,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Proveedores Pestaña 7 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 374,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Caja y Finanzas Pestaña 8 de 10",
+    "rol": "button",
+    "x": 0,
+    "y": 418,
+    "w": 179,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ajustes Pestaña 9 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 462,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Guía Pestaña 10 de 10",
+    "rol": "button",
+    "x": 4,
+    "y": 506,
+    "w": 170,
+    "h": 44,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Monitor de BD",
+    "rol": "button",
+    "x": 65,
+    "y": 736,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "3",
+    "rol": "",
+    "x": 106,
+    "y": 784,
+    "w": 7,
+    "h": 16,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Centro de notificaciones",
+    "rol": "button",
+    "x": 65,
+    "y": 788,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Cerrar sesión",
+    "rol": "button",
+    "x": 65,
+    "y": 840,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "BCV sin conexión",
+    "rol": "",
+    "x": 1397,
+    "y": 20,
+    "w": 89,
+    "h": 16,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Actualizar",
+    "rol": "button",
+    "x": 1504,
+    "y": 4,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Cerrar sesión",
+    "rol": "button",
+    "x": 1552,
+    "y": 4,
+    "w": 48,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ferretería Adrialga C.A.",
+    "rol": "",
+    "x": 298,
+    "y": 104,
+    "w": 237,
+    "h": 35,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ventas, inventario y caja bajo control",
+    "rol": "",
+    "x": 298,
+    "y": 144,
+    "w": 221,
+    "h": 19,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Nueva venta",
+    "rol": "button",
+    "x": 1264,
+    "y": 123,
+    "w": 148,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Inventario",
+    "rol": "button",
+    "x": 1420,
+    "y": 123,
+    "w": 132,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "miércoles, 14 de octubre",
+    "rol": "",
+    "x": 319,
+    "y": 173,
+    "w": 137,
+    "h": 17,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ver Facturas",
+    "rol": "group",
+    "x": 204,
+    "y": 234,
+    "w": 336,
+    "h": 108,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Hoy",
+    "rol": "button",
+    "x": 207,
+    "y": 234,
+    "w": 330,
+    "h": 74,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Esta Semana",
+    "rol": "button",
+    "x": 552,
+    "y": 234,
+    "w": 330,
+    "h": 74,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Este Mes",
+    "rol": "button",
+    "x": 898,
+    "y": 234,
+    "w": 330,
+    "h": 74,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Este Año",
+    "rol": "button",
+    "x": 1243,
+    "y": 234,
+    "w": 330,
+    "h": 74,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Bs. 0.00 Ventas Totales (VES) 0 facturas · equiv. $0.00 USD",
+    "rol": "button",
+    "x": 204,
+    "y": 354,
+    "w": 334,
+    "h": 216,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "$0.00 Margen de Ganancia Margen bruto estimado: 0.0% sobre ventas (costo histórico al vender; no es utilidad neta).",
+    "rol": "button",
+    "x": 550,
+    "y": 354,
+    "w": 334,
+    "h": 216,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Bs. 0.00 Ticket Promedio $0.00 USD por factura.",
+    "rol": "button",
+    "x": 896,
+    "y": 354,
+    "w": 334,
+    "h": 216,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "$1293.23 Valor Inventario Capital invertido: Stock × Costo Promedio.",
+    "rol": "button",
+    "x": 1242,
+    "y": 354,
+    "w": 334,
+    "h": 216,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Exportar Libro Diario (CSV)",
+    "rol": "button",
+    "x": 1330,
+    "y": 582,
+    "w": 246,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ventas por Hora (Hoy) Sin ventas registradas en el período seleccionado.",
+    "rol": "group",
+    "x": 204,
+    "y": 650,
+    "w": 1372,
+    "h": 183,
+    "hijos": 2,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Histograma",
+    "rol": "button",
+    "x": 1351,
+    "y": 670,
+    "w": 118,
+    "h": 35,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Línea",
+    "rol": "button",
+    "x": 1475,
+    "y": 670,
+    "w": 81,
+    "h": 35,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Asistente de Negocio",
+    "rol": "",
+    "x": 232,
+    "y": 853,
+    "w": 176,
+    "h": 26,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "92 producto(s) en stock mínimo \"Ducha tipo teléfono cromada con manguera 1,2 m\" está al límite. Genera la nota de entrada antes de que la venta lo agote.",
+    "rol": "group",
+    "x": 204,
+    "y": 889,
+    "w": 678,
+    "h": 11,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Revisar producto",
+    "rol": "button",
+    "x": 254,
+    "y": 974,
+    "w": 154,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Inventario muerto: 4 producto(s) $920.94 estancados sin ventas en 30 días. Ej: \"bombillos\" (38 uds). Promociona o descuenta por lote.",
+    "rol": "group",
+    "x": 204,
+    "y": 1042,
+    "w": 678,
+    "h": 145,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Revisar producto",
+    "rol": "button",
+    "x": 254,
+    "y": 1127,
+    "w": 154,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Margen bajo · Flexometro 12.5% (precio $8.00 vs costo $7.00). Reevalúa costo de compra o precio.",
+    "rol": "group",
+    "x": 204,
+    "y": 1195,
+    "w": 678,
+    "h": 125,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Revisar producto",
+    "rol": "button",
+    "x": 254,
+    "y": 1260,
+    "w": 154,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Alta rotación · Pega Tubrica de pvc (agua caliente ) Índice 15 (15 uds en 30 días vs 0 en stock). Garantiza reposición.",
+    "rol": "group",
+    "x": 204,
+    "y": 1328,
+    "w": 678,
+    "h": 125,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Revisar producto",
+    "rol": "button",
+    "x": 254,
+    "y": 1393,
+    "w": 154,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Pega Tubrica de pvc (agua caliente ): se agota en ~0 día(s) Quedan 0 uds y el ritmo de venta es de 15 uds cada 30 días. Haz la compra hoy para no perder ventas.",
+    "rol": "group",
+    "x": 204,
+    "y": 1461,
+    "w": 678,
+    "h": 145,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Registrar compra",
+    "rol": "button",
+    "x": 254,
+    "y": 1546,
+    "w": 156,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Producto Humo E2E (Con \"comillas\", y comas): se agota en ~2 día(s) Quedan 1 uds y el ritmo de venta es de 13 uds cada 30 días. Haz la compra hoy para no perder ventas.",
+    "rol": "group",
+    "x": 204,
+    "y": 1614,
+    "w": 678,
+    "h": 145,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Registrar compra",
+    "rol": "button",
+    "x": 254,
+    "y": 1699,
+    "w": 156,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Top 10 Productos Más Vendidos",
+    "rol": "",
+    "x": 232,
+    "y": 1787,
+    "w": 267,
+    "h": 26,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Caja del Día (por método de pago)",
+    "rol": "",
+    "x": 898,
+    "y": 1787,
+    "w": 281,
+    "h": 26,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Aún no hay ventas registradas Cuando realices tu primera venta, aquí aparecerán tus productos estrella.",
+    "rol": "",
+    "x": 204,
+    "y": 1823,
+    "w": 462,
+    "h": 166,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Sin ventas de hoy todavía Abre una venta desde “Vender” y los cobros aparecerán aquí separados por método de pago.",
+    "rol": "group",
+    "x": 898,
+    "y": 1823,
+    "w": 571,
+    "h": 226,
+    "hijos": 1,
+    "hojas": false
+  },
+  {
+    "etiqueta": "Vender ahora",
+    "rol": "button",
+    "x": 1106,
+    "y": 1965,
+    "w": 154,
+    "h": 48,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Alertas de Reposición Crítica",
+    "rol": "",
+    "x": 898,
+    "y": 2065,
+    "w": 238,
+    "h": 26,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "5 críticos",
+    "rol": "",
+    "x": 1152,
+    "y": 2070,
+    "w": 48,
+    "h": 16,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Ducha tipo teléfono cromada con manguera 1,2 m Stock: 0 (Mín: 5)",
+    "rol": "button",
+    "x": 910,
+    "y": 2113,
+    "w": 654,
+    "h": 64,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Rótulo: \"No pase solo personal autorizado\" 15 x 15 cm Stock: 0 (Mín: 5)",
+    "rol": "button",
+    "x": 910,
+    "y": 2177,
+    "w": 654,
+    "h": 64,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Pega Tubrica de pvc (agua caliente ) Stock: 0 (Mín: 5)",
+    "rol": "button",
+    "x": 910,
+    "y": 2241,
+    "w": 654,
+    "h": 64,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Set linga con rachet gancho en J 2267 kg 2 piezas Tezza Stock: 0 (Mín: 5)",
+    "rol": "button",
+    "x": 910,
+    "y": 2305,
+    "w": 654,
+    "h": 64,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Aromatizante para auto Little Trees aroma Pina Colada Stock: 0 (Mín: 5)",
+    "rol": "button",
+    "x": 910,
+    "y": 2369,
+    "w": 654,
+    "h": 64,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "Módulos del Sistema",
+    "rol": "",
+    "x": 204,
+    "y": 2473,
+    "w": 192,
+    "h": 29,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "1 Ventas / POS",
+    "rol": "button",
+    "x": 204,
+    "y": 2514,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "2 Facturas 83 emitidas",
+    "rol": "button",
+    "x": 550,
+    "y": 2514,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "3 Clientes 12 reg.",
+    "rol": "button",
+    "x": 896,
+    "y": 2514,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "4 Productos 100 ítems",
+    "rol": "button",
+    "x": 1242,
+    "y": 2514,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "5 Entradas 92 bajo stock",
+    "rol": "button",
+    "x": 204,
+    "y": 2722,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "6 Proveedores 3 reg.",
+    "rol": "button",
+    "x": 550,
+    "y": 2722,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "7 Métricas Profundas",
+    "rol": "button",
+    "x": 896,
+    "y": 2722,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "8 Finanzas & Caja",
+    "rol": "button",
+    "x": 1242,
+    "y": 2722,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  },
+  {
+    "etiqueta": "9 Configuración",
+    "rol": "button",
+    "x": 204,
+    "y": 2931,
+    "w": 334,
+    "h": 196,
+    "hijos": 0,
+    "hojas": true
+  }
+]

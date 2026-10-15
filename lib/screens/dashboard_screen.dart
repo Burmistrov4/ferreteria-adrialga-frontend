@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+
+import '../widgets/bi_serie_chart.dart';
 
 import 'pos_screen.dart';
 import 'inventario_screen.dart';
@@ -12,7 +13,9 @@ import 'finanzas_screen.dart';
 import '../services/api_service.dart';
 import '../services/preferences_service.dart';
 import '../services/shortcut_service.dart';
+import '../services/socket_service.dart';
 import '../widgets/walkthrough_overlay.dart';
+import '../utils/responsive.dart';
 
 import 'configuracion_screen.dart';
 
@@ -56,26 +59,80 @@ List<_ModuloSistema> _modulosSistema(BuildContext context) {
   final scheme = Theme.of(context).colorScheme;
   final isDark = Theme.of(context).brightness == Brightness.dark;
   return [
-    _ModuloSistema(1, 'Ventas / POS', 'OPERACIÓN', Icons.point_of_sale,
-        scheme.primary, PosScreen()),
-    _ModuloSistema(2, 'Facturas', 'OPERACIÓN', Icons.receipt_long,
-        scheme.secondary, FacturasScreen()),
-    _ModuloSistema(3, 'Clientes', 'OPERACIÓN', Icons.people,
-        scheme.tertiary, ClientesScreen()),
-    _ModuloSistema(4, 'Productos', 'OPERACIÓN', Icons.inventory_2,
-        isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706), InventarioScreen()), // Amber
-    _ModuloSistema(5, 'Entradas', 'OPERACIÓN',
-        Icons.add_shopping_cart, isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED), EntradasScreen()), // Violet
-    _ModuloSistema(6, 'Proveedores', 'ADMINISTRACIÓN', Icons.local_shipping,
-        isDark ? const Color(0xFF818CF8) : const Color(0xFF4338CA), ProveedoresScreen()), // Indigo
+    _ModuloSistema(
+      1,
+      'Ventas / POS',
+      'OPERACIÓN',
+      Icons.point_of_sale,
+      scheme.primary,
+      PosScreen(),
+    ),
+    _ModuloSistema(
+      2,
+      'Facturas',
+      'OPERACIÓN',
+      Icons.receipt_long,
+      scheme.secondary,
+      FacturasScreen(),
+    ),
+    _ModuloSistema(
+      3,
+      'Clientes',
+      'OPERACIÓN',
+      Icons.people,
+      scheme.tertiary,
+      ClientesScreen(),
+    ),
+    _ModuloSistema(
+      4,
+      'Productos',
+      'OPERACIÓN',
+      Icons.inventory_2,
+      isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+      InventarioScreen(),
+    ), // Amber
+    _ModuloSistema(
+      5,
+      'Entradas',
+      'OPERACIÓN',
+      Icons.add_shopping_cart,
+      isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+      EntradasScreen(),
+    ), // Violet
+    _ModuloSistema(
+      6,
+      'Proveedores',
+      'ADMINISTRACIÓN',
+      Icons.local_shipping,
+      isDark ? const Color(0xFF818CF8) : const Color(0xFF4338CA),
+      ProveedoresScreen(),
+    ), // Indigo
     // Módulo 7: las métricas profundas viven en el propio Dashboard —
     // _abrirModulo hace scroll a esa sección (ver _irAMetricas).
-    _ModuloSistema(7, 'Métricas Profundas', 'ADMINISTRACIÓN', Icons.insights,
-        isDark ? const Color(0xFFFB923C) : const Color(0xFFEA580C), null), // Deep Orange
-    _ModuloSistema(8, 'Finanzas & Caja', 'ADMINISTRACIÓN',
-        Icons.account_balance_wallet, isDark ? const Color(0xFFC084FC) : const Color(0xFF6D28D9), FinanzasScreen()), // Purple
-    _ModuloSistema(9, 'Configuración', 'ADMINISTRACIÓN', Icons.settings,
-        isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569), ConfiguracionScreen()), // Slate
+    _ModuloSistema(
+      7,
+      'Métricas Profundas',
+      'ADMINISTRACIÓN',
+      Icons.insights,
+      isDark ? const Color(0xFFFB923C) : const Color(0xFFEA580C),
+      null,
+    ), // Deep Orange
+    _ModuloSistema(
+      8,
+      'Finanzas & Caja',
+      'ADMINISTRACIÓN',
+      Icons.account_balance_wallet,
+      isDark ? const Color(0xFFC084FC) : const Color(0xFF6D28D9),
+      FinanzasScreen(),
+    ), // Purple
+    _ModuloSistema(
+      9,
+      'Configuración',
+      'ADMINISTRACIÓN',
+      Icons.settings,
+      isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+      ConfiguracionScreen(),
+    ), // Slate
   ];
 }
 
@@ -87,6 +144,9 @@ class _MetricaCard extends StatelessWidget {
   final String descripcion;
   final VoidCallback? onTap;
 
+  /// Variación % vs. período anterior (null = sin base de comparación).
+  final double? deltaPct;
+
   const _MetricaCard({
     required this.icon,
     required this.color,
@@ -94,9 +154,40 @@ class _MetricaCard extends StatelessWidget {
     required this.valor,
     this.descripcion = '',
     this.onTap,
+    this.deltaPct,
   });
 
-@override
+  /// Insignia de variación vs período anterior: sube = verde, cae = rojo.
+  Widget _badgeDelta() {
+    final pct = deltaPct!;
+    final sube = pct >= 0;
+    final color = sube ? Colors.green.shade700 : Colors.red.shade700;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          sube ? Icons.arrow_upward : Icons.arrow_downward,
+          size: 13,
+          color: color,
+        ),
+        const SizedBox(width: 3),
+        Flexible(
+          child: Text(
+            '${sube ? '+' : ''}${pct.toStringAsFixed(1)}% vs período previo',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
@@ -110,67 +201,62 @@ class _MetricaCard extends StatelessWidget {
         // baja que el contenido (móvil angosto / aspect ratio forzoso).
         // Elimina el "BOTTOM OVERFLOWED" sin fijar alturas manuales.
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: LayoutBuilder(
-            builder: (context, box) {
-              return FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: box.maxWidth),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Icon(icon, color: color, size: 22),
-                          if (onTap != null)
-                            Icon(
-                              Icons.chevron_right,
-                              size: 18,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        valor,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        titulo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (descripcion.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          descripcion,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 2,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ],
+          padding: EdgeInsets.all(
+            MediaQuery.sizeOf(context).width < 600 ? 14 : 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Icon(icon, color: color, size: 22),
+                  if (onTap != null)
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                valor,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (deltaPct != null) ...[
+                const SizedBox(height: 4),
+                _badgeDelta(),
+              ],
+              const SizedBox(height: 2),
+              Text(
+                titulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (descripcion.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  descripcion,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
-              );
-            },
+              ],
+            ],
           ),
         ),
       ),
@@ -247,8 +333,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _alRecibirDbUpdate(String modulo) {
+    if (!mounted) return;
+    // El dashboard también muestra conteos de clientes/proveedores, alertas de
+    // stock y compras. Esos datos cambian desde otros terminales sin que haya
+    // necesariamente una venta nueva.
+    const modulosQueAfectanDashboard = {
+      'ventas',
+      'inventario',
+      'clientes',
+      'proveedores',
+      'caja',
+      'finanzas',
+      '__reconexion__',
+    };
+    if (!modulosQueAfectanDashboard.contains(modulo)) return;
+    _cargarMetricas(silencioso: true);
+    _cargarSerie(silencioso: true);
+  }
+
   @override
   void dispose() {
+    SocketService.offDbUpdateModulo(_alRecibirDbUpdate);
     _scrollController.dispose();
     super.dispose();
   }
@@ -256,6 +362,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    SocketService.onDbUpdateModulo(_alRecibirDbUpdate);
     ShortcutService.setModule('dashboard');
     _cargarMetricas();
     _cargarSerie();
@@ -290,11 +397,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _cargarMetricas() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _cargarMetricas({bool silencioso = false}) async {
+    if (!silencioso) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
     try {
       final data = await ApiService.getDashboard();
       if (mounted) {
@@ -357,7 +466,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final data = await ApiService.getSerieFinanciera(periodoSolicitado);
       _cacheSeries[periodoSolicitado] = data;
       if (mounted && _periodo == periodoSolicitado) {
-        setState(() { _serie = data; _cargandoSerie = false; });
+        setState(() {
+          _serie = data;
+          _cargandoSerie = false;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -378,6 +490,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildTasaCompacta(ColorScheme cs) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _tasaEsBCV ? cs.primaryContainer : cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(
+        _tasaEsBCV
+            ? 'BCV ${_tasaCambio.toStringAsFixed(4)}'
+            : 'BCV sin conexión',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+          color: _tasaEsBCV ? cs.onPrimaryContainer : cs.onSurface,
+        ),
+      ),
+    );
+  }
+
+  void _mostrarTasa(BuildContext context, ColorScheme cs) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Tasa de cambio'),
+        content: Text(
+          _tasaEsBCV ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(4)} Bs/USD' : 'No hay conexión con BCV. Se está utilizando el respaldo disponible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -385,43 +536,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Panel de Control'),
         actions: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _tasaEsBCV
-                    ? colorScheme.primaryContainer
-                    : colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _tasaEsBCV
-                        ? 'Tasa BCV: ${_tasaCambio.toStringAsFixed(4)} Bs/usd'
-                        : 'Tasa BCV: Sin conexión',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: _tasaEsBCV
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onSurface,
-                    ),
-                  ),
-                  if (!_tasaEsBCV)
-                    Text(
-                      'Usando respaldo',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          if (MediaQuery.sizeOf(context).width >= 600)
+            _buildTasaCompacta(colorScheme),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -431,51 +547,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
             tooltip: 'Actualizar',
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _cerrarSesion,
-            tooltip: 'Cerrar sesión',
-          ),
+          if (MediaQuery.sizeOf(context).width >= 600)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: _cerrarSesion,
+              tooltip: 'Cerrar sesión',
+            )
+          else
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'tasa') _mostrarTasa(context, colorScheme);
+                if (value == 'logout') _cerrarSesion();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'tasa', child: Text('Ver tasa BCV')),
+                PopupMenuItem(value: 'logout', child: Text('Cerrar sesión')),
+              ],
+            ),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
           await Future.wait([_cargarMetricas(), _cargarSerie()]);
         },
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildEncabezado(),
-              const SizedBox(height: 20),
-              // ── Sección financiera (Fase 3) ─────────────────────────────
-              // Control ÚNICO de período: las tarjetas seleccionan el período
-              // (actualizan la serie) y navegan a Facturas con ese filtro.
-              _buildTarjetasPeriodo(),
-              const SizedBox(height: 12),
-              _buildKPIsFinancieros(),
-              const SizedBox(height: 12),
-              _buildBotonExportar(),
-              const SizedBox(height: 20),
-              _buildTendenciaVentas(),
-              const SizedBox(height: 20),
-              _buildInsightsPanel(),
-              const SizedBox(height: 20),
-              _buildTopProductos(),
-              const SizedBox(height: 20),
-              _buildCajaDiaria(),
-              const SizedBox(height: 28),
-              const Text(
-                'Módulos del Sistema',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final ancho = constraints.maxWidth;
+            return SingleChildScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: AdrialgaResponsive.contentMaxWidth(ancho),
+                  ),
+                  child: Padding(
+                    padding: AdrialgaResponsive.pageInsets(ancho),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildEncabezado(),
+                        const SizedBox(height: 20),
+                        // ── Sección financiera (Fase 3) ─────────────────────────────
+                        // Control ÚNICO de período: las tarjetas seleccionan el período
+                        // (actualizan la serie) y navegan a Facturas con ese filtro.
+                        _buildTarjetasPeriodo(),
+                        const SizedBox(height: 12),
+                        _buildKPIsFinancieros(),
+                        const SizedBox(height: 12),
+                        _buildBotonExportar(),
+                        const SizedBox(height: 20),
+                        _buildTendenciaVentas(),
+                        const SizedBox(height: 20),
+                        _buildResponsivePair(
+                          _buildInsightsPanel(),
+                          _buildTopCajeros(),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildResponsivePair(
+                          _buildTopProductos(),
+                          _buildCajaDiaria(),
+                        ),
+                        const SizedBox(height: 28),
+                        const Text(
+                          'Módulos del Sistema',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSubmenu(),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 12),
-              _buildSubmenu(),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -489,22 +638,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Facturas exige el tap explícito en el botón pop-up "Ver Facturas"
   /// que emerge con rebote cuando la tarjeta está activa.
   Widget _buildTarjetasPeriodo() {
-    return SizedBox(
-      height: 108,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: _periodos.map((p) {
-          return Expanded(
-            child: _TarjetaPeriodo(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final ancho = constraints.maxWidth;
+        final columnas = ancho < 600
+            ? 2
+            : ancho < 1000
+            ? 2
+            : 4;
+        final relacion = ancho < 600
+            ? 2.35
+            : ancho < 1000
+            ? 2.8
+            : 3.1;
+        return GridView.count(
+          crossAxisCount: columnas,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: relacion,
+          children: _periodos.map((p) {
+            return _TarjetaPeriodo(
               etiqueta: p.$2,
               seleccionada: _periodo == p.$1,
               onSeleccionar: () => _seleccionarPeriodo(p.$1),
               onVerFacturas: () =>
                   _navegar(FacturasScreen(periodoInicial: p.$1)),
-            ),
-          );
-        }).toList(),
-      ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 
@@ -512,20 +676,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Genera un CSV con facturas, desglose fiscal, tasa BCV y métodos de pago
   /// del período activo, lo guarda en Documentos y lo abre con la app asociada.
   Widget _buildBotonExportar() {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.file_download, size: 18),
-        label: const Text('Exportar Libro Diario (CSV)'),
-        onPressed: _exportarLibroDiario,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compacto = constraints.maxWidth < 600;
+        return Align(
+          alignment: compacto ? Alignment.centerLeft : Alignment.centerRight,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.file_download, size: 18),
+            label: Text(
+              compacto ? 'Exportar CSV' : 'Exportar Libro Diario (CSV)',
+              overflow: TextOverflow.ellipsis,
+            ),
+            onPressed: _exportarLibroDiario,
+          ),
+        );
+      },
     );
   }
 
   Future<void> _exportarLibroDiario() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Generando libro diario...')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Generando libro diario...')));
     try {
       final ruta = await ApiService.exportarLibroDiarioCsv(_periodo);
       if (mounted) {
@@ -535,9 +707,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al exportar: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
       }
     }
   }
@@ -562,7 +733,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final valorInv =
         double.tryParse(_serie?['valorInventario']?.toString() ?? '') ?? 0.0;
     final rent = _serie?['rentabilidad'] as Map<String, dynamic>?;
-    final pctRent = double.tryParse(rent?['porcentaje']?.toString() ?? '') ?? 0.0;
+    final pctRent =
+        double.tryParse(rent?['porcentaje']?.toString() ?? '') ?? 0.0;
+    // Comparativa vs período anterior (deltas % para las insignias de KPI).
+    final comp = (_serie?['comparativa'] as Map<String, dynamic>?) ?? {};
+    double? delta(Object? v) =>
+        v == null ? null : double.tryParse(v.toString());
 
     final kpis = <_MetricaCard>[
       _MetricaCard(
@@ -572,6 +748,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         valor: 'Bs. ${_moneda(ventas['montoTotalBs'])}',
         descripcion:
             '${_num(ventas['cantidadFacturas'])} facturas · equiv. \$${_moneda(ventas['montoTotal'])} USD',
+        deltaPct: delta(comp['deltaVentasPct']),
         onTap: () => _irAFacturas(),
       ),
       _MetricaCard(
@@ -580,7 +757,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Margen de Ganancia',
         valor: '\$${_moneda(margen)}',
         descripcion:
-            'Rentabilidad real: ${pctRent.toStringAsFixed(1)}% sobre ventas (Costo = CMP al vender).',
+            'Margen bruto estimado: ${pctRent.toStringAsFixed(1)}% sobre ventas (costo histórico al vender; no es utilidad neta).',
         onTap: () => _irAFacturas(),
       ),
       _MetricaCard(
@@ -588,8 +765,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: Colors.blueAccent,
         titulo: 'Ticket Promedio',
         valor: 'Bs. ${_moneda(ventas['ticketPromedioBs'])}',
-        descripcion:
-            '\$${_moneda(ventas['ticketPromedio'])} USD por factura.',
+        descripcion: '\$${_moneda(ventas['ticketPromedio'])} USD por factura.',
+        deltaPct: delta(comp['deltaTicketPct']),
         onTap: () => _irAFacturas(),
       ),
       _MetricaCard(
@@ -598,7 +775,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Valor Inventario',
         valor: '\$${_moneda(valorInv)}',
         descripcion: 'Capital invertido: Stock × Costo Promedio.',
-        onTap: () => _irAFacturas(),
+        onTap: () => _navegar(InventarioScreen()),
       ),
     ];
 
@@ -608,21 +785,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final ancho = constraints.maxWidth;
         int columnas;
         double aspecto;
-        
+
         if (ancho < 600) {
-          columnas = 1; // Móvil
-          aspecto = 2.8;
+          columnas = 1; // 375 dp: KPI completo, fácil de escanear.
+          aspecto = 3.05;
         } else if (ancho < 900) {
-          columnas = 2; // Tablet pequeña
-          aspecto = 1.8;
+          columnas = 2; // 768 dp: dos tarjetas sin comprimir el contenido.
+          aspecto = 1.9;
         } else if (ancho < 1200) {
-          columnas = 3; // Tablet grande
-          aspecto = 1.5;
+          columnas = 3; // 1024 dp: aprovecha el ancho sin miniaturizar.
+          aspecto = 1.65;
         } else {
-          columnas = 4; // Desktop
-          aspecto = 1.4;
+          columnas = 4; // 1280/1440+: lectura de escritorio.
+          aspecto = 1.55;
         }
-        
+
         return GridView.count(
           crossAxisCount: columnas,
           shrinkWrap: true,
@@ -636,22 +813,169 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildResponsivePair(Widget first, Widget second) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < AdrialgaResponsive.tablet) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              first,
+              SizedBox(
+                height: AdrialgaResponsive.sectionGap(constraints.maxWidth),
+              ),
+              second,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            const SizedBox(width: 16),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Top Cajeros del período (BI Fase 3): monto, facturas y % del total.
+  Widget _buildTopCajeros() {
+    if (_cargandoSerie) return const SizedBox.shrink();
+    final lista =
+        (_serie?['rendimientoCajeros'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        const <Map<String, dynamic>>[];
+    if (lista.isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final totalMontoBs = lista.fold<double>(
+      0,
+      (total, c) => total + _parseNum(c['montoBs']),
+    );
+    final maxMontoBs = lista
+        .map((c) => _parseNum(c['montoBs']))
+        .fold<double>(0, (m, v) => v > m ? v : m);
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.groups, size: 20, color: cs.primary),
+                const SizedBox(width: 8),
+                const Text(
+                  'Rendimiento por Cajero',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...lista.take(6).map((c) {
+              final montoBs = _parseNum(c['montoBs']);
+              final ticketBs = _parseNum(c['ticketPromedioBs']);
+              final pct = totalMontoBs > 0
+                  ? (montoBs / totalMontoBs) * 100
+                  : 0.0;
+              final frac = maxMontoBs > 0
+                  ? (montoBs / maxMontoBs).clamp(0.0, 1.0)
+                  : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${c['nombre']} · ${c['rol']}',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'Bs. ${_moneda(montoBs)} · ${pct.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: frac,
+                        minHeight: 8,
+                        backgroundColor: cs.surfaceContainerHighest,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${_num(c['facturas'])} factura(s) · Ticket Bs. ${_moneda(ticketBs)}',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ═══════════════ MOTOR DE INSIGHTS INTELIGENTES (Fase 8) ═══════════════
   // Reglas de negocio que derivan recomendaciones accionables de la serie
   // financiera ya cargada (cero llamadas extra al backend).
 
   /// Genera la lista de insights del período activo, ordenada por prioridad.
-  List<({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion, String? accionTexto})>
-      _generarInsights() {
-    final insights = <({IconData icon, Color color, String titulo, String mensaje, VoidCallback? accion, String? accionTexto})>[];
+  List<
+    ({
+      IconData icon,
+      Color color,
+      String titulo,
+      String mensaje,
+      VoidCallback? accion,
+      String? accionTexto,
+    })
+  >
+  _generarInsights() {
+    final insights =
+        <
+          ({
+            IconData icon,
+            Color color,
+            String titulo,
+            String mensaje,
+            VoidCallback? accion,
+            String? accionTexto,
+          })
+        >[];
     final s = _serie;
     if (s == null) return insights;
 
     final ventas = (s['ventas'] as Map<String, dynamic>?) ?? const {};
     final rent = (s['rentabilidad'] as Map<String, dynamic>?) ?? const {};
-    final serie = (s['serie'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-    final caja = (s['cajaDiaria'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final serie =
+        (s['serie'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final caja =
+        (s['cajaDiaria'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final alertas = (s['alertasStock'] as List<dynamic>?) ?? const [];
+    final conteoAlertas =
+        (s['conteoAlertasStock'] as num?)?.toInt() ?? alertas.length;
 
     // 1) Margen de ganancia: umbral ferretería sano ≈ 25%.
     final pctMargen = _parseNum(rent['porcentaje']);
@@ -664,16 +988,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Margen bajo (${pctMargen.toStringAsFixed(1)}%)',
           mensaje:
               'Ganancia de \$${_moneda(margenUsd)} sobre \$${_moneda(ventas['montoTotal'])} en ventas. Revisa precios de costo y márgenes por producto antes de reponer inventario.',
-          accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+          accion: () => _navegar(InventarioScreen()),
+          accionTexto: 'Revisar producto',
         ));
       } else if (pctMargen >= 30) {
         insights.add((
           icon: Icons.trending_up,
           color: Colors.green,
           titulo: 'Excelente margen (${pctMargen.toStringAsFixed(1)}%)',
-          mensaje:
-              'La rentabilidad del período supera el 30%. Momento ideal para negociar volumen con proveedores o invertir en stock de alta rotación.',
-          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)), accionTexto: 'Ver facturas',
+          mensaje: 'La rentabilidad del período supera el 30%. Momento ideal para negociar volumen con proveedores o invertir en stock de alta rotación.',
+          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)),
+          accionTexto: 'Ver facturas',
         ));
       } else {
         insights.add((
@@ -682,7 +1007,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Margen saludable (${pctMargen.toStringAsFixed(1)}%)',
           mensaje:
               'Ganancia de \$${_moneda(margenUsd)} en el período. Un empuje del 5% en el ticket promedio sumaría \$${_moneda(margenUsd * 0.05 / (pctMargen / 100))} adicionales.',
-          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)), accionTexto: 'Ver facturas',
+          accion: () => _navegar(FacturasScreen(periodoInicial: _periodo)),
+          accionTexto: 'Ver facturas',
         ));
       }
     }
@@ -700,7 +1026,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             titulo: 'Ventas cayendo (${variacion.toStringAsFixed(0)}%)',
             mensaje:
                 'El último tramo cerró en Bs. ${_moneda(actual)} vs Bs. ${_moneda(previo)} del anterior. Considera promociones o verificar disponibilidad de los productos más vendidos.',
-            accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+            accion: () => _navegar(InventarioScreen()),
+            accionTexto: 'Revisar producto',
           ));
         } else if (variacion >= 15) {
           insights.add((
@@ -709,9 +1036,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
             titulo: 'Ventas al alza (+${variacion.toStringAsFixed(0)}%)',
             mensaje:
                 'Bs. ${_moneda(actual)} en el último tramo (+${variacion.toStringAsFixed(0)}%). Asegura stock del Top 5 para no perder la racha.',
-            accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+            accion: () => _navegar(InventarioScreen()),
+            accionTexto: 'Revisar producto',
           ));
         }
+      }
+    }
+
+    // 2b) Contexto vs. PROMEDIO del período (lectura de un vistazo).
+    if (serie.length >= 4) {
+      final valores = serie.map((f) => _parseNum(f['montoBs'])).toList();
+      final promedio = valores.reduce((a, b) => a + b) / valores.length;
+      final ultimo = valores.last;
+      if (promedio > 0) {
+        final desvio = ((ultimo - promedio) / promedio) * 100;
+        if (desvio.abs() >= 25) {
+          insights.add((
+            icon: desvio > 0 ? Icons.insights : Icons.trending_flat,
+            color: desvio > 0 ? Colors.green : Colors.orange,
+            titulo: desvio > 0
+                ? 'Último tramo ${desvio.toStringAsFixed(0)}% sobre el promedio'
+                : 'Último tramo ${desvio.abs().toStringAsFixed(0)}% bajo el promedio',
+            mensaje:
+                'Promedio del período: Bs. ${_moneda(promedio)}. El tramo "${serie.last['etiqueta']}" cerró en Bs. ${_moneda(ultimo)}.',
+            accion: null,
+            accionTexto: null,
+          ));
+        }
+      }
+    }
+
+    // 2c) PICO inusual: un tramo que supera 2× la mediana del período.
+    if (serie.length >= 5) {
+      final orden = serie.map((f) => _parseNum(f['montoBs'])).toList()..sort();
+      final mediana = orden[orden.length ~/ 2];
+      final pico = serie.reduce(
+        (a, b) => _parseNum(a['montoBs']) >= _parseNum(b['montoBs']) ? a : b,
+      );
+      final picoVal = _parseNum(pico['montoBs']);
+      if (mediana > 0 && picoVal >= mediana * 2) {
+        insights.add((
+          icon: Icons.bolt,
+          color: Colors.deepPurple,
+          titulo: 'Pico inusual: ${pico['etiqueta']}',
+          mensaje:
+              'Bs. ${_moneda(picoVal)} — más del doble de la mediana del período (Bs. ${_moneda(mediana)}). Revisa si hubo una venta mayorista o promoción.',
+          accion: null,
+          accionTexto: null,
+        ));
       }
     }
 
@@ -728,13 +1100,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: 'Mejor momento: ${mejor['etiqueta']}',
           mensaje:
               'Concentró Bs. ${_moneda(mejor['montoBs'])}. Prioriza cajero y reposición de mercancía en esa franja.',
-          accion: null, accionTexto: null,
+          accion: null,
+          accionTexto: null,
         ));
       }
     }
 
     // 4) Stock crítico: productos en o bajo el mínimo.
-    final conteoAlertas = alertas.length;
     if (conteoAlertas > 0) {
       final primero = (alertas.first as Map).cast<String, dynamic>();
       insights.add((
@@ -743,7 +1115,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: '$conteoAlertas producto(s) en stock mínimo',
         mensaje:
             '"${primero['Nombre']}" está al límite. Genera la nota de entrada antes de que la venta lo agote.',
-        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+        accion: () => _navegar(InventarioScreen()),
+        accionTexto: 'Revisar producto',
       ));
     }
 
@@ -757,10 +1130,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           insights.add((
             icon: Icons.account_balance_wallet,
             color: const Color(0xFF8B5CF6),
-            titulo: '${dominante['metodo']}: ${pct.toStringAsFixed(0)}% de los cobros',
-            mensaje:
-                'Fuerte concentración en un solo método. Verifica que el flujo de caja físico cubra los egresos en efectivo del día.',
-            accion: () => _navegar(FinanzasScreen()), accionTexto: 'Ver caja',
+            titulo:
+                '${dominante['metodo']}: ${pct.toStringAsFixed(0)}% de los cobros',
+            mensaje: 'Fuerte concentración en un solo método. Verifica que el flujo de caja físico cubra los egresos en efectivo del día.',
+            accion: () => _navegar(FinanzasScreen()),
+            accionTexto: 'Ver caja',
           ));
         }
       }
@@ -769,17 +1143,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // 6) Asistente de Negocio (analítica de 30 días del backend).
     final asist = (s['asistente'] as Map<String, dynamic>?) ?? const {};
     final muerto =
-        (asist['inventarioMuerto'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        (asist['inventarioMuerto'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
     final margenLista =
-        (asist['alertasMargen'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-    final rot =
-        (asist['rotacion'] as Map<String, dynamic>?) ?? const {};
+        (asist['alertasMargen'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+    final rot = (asist['rotacion'] as Map<String, dynamic>?) ?? const {};
     final mayor =
-        (rot['mayorRotacion'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        (rot['mayorRotacion'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
 
     if (muerto.isNotEmpty) {
       final valMuerto = muerto.fold<double>(
-          0, (t, p) => t + _parseNum(p['valorDolares']));
+        0,
+        (t, p) => t + _parseNum(p['valorDolares']),
+      );
       final p1 = muerto.first;
       insights.add((
         icon: Icons.dangerous,
@@ -787,7 +1168,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Inventario muerto: ${muerto.length} producto(s)',
         mensaje:
             '\$${_moneda(valMuerto)} estancados sin ventas en 30 días. Ej: "${p1['nombre']}" (${p1['stock']} uds). Promociona o descuenta por lote.',
-        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+        accion: () => _navegar(InventarioScreen()),
+        accionTexto: 'Revisar producto',
       ));
     }
 
@@ -796,13 +1178,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final perdida = pct < 0;
       insights.add((
         icon: Icons.trending_down,
-        color: perdida
-            ? Theme.of(context).colorScheme.error
-            : Colors.orange,
+        color: perdida ? Theme.of(context).colorScheme.error : Colors.orange,
         titulo: 'Margen ${perdida ? 'a pérdida' : 'bajo'} · ${p['nombre']}',
         mensaje:
             '${pct.toStringAsFixed(1)}% (precio \$${_moneda(p['precioDolar'])} vs costo \$${_moneda(p['costoDolar'])}). Reevalúa costo de compra o precio.',
-        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+        accion: () => _navegar(InventarioScreen()),
+        accionTexto: 'Revisar producto',
       ));
     }
 
@@ -814,7 +1195,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Alta rotación · ${t['nombre']}',
         mensaje:
             'Índice ${t['indice']} (${t['unidades']} uds en 30 días vs ${t['stock']} en stock). Garantiza reposición.',
-        accion: () => _navegar(InventarioScreen()), accionTexto: 'Revisar producto',
+        accion: () => _navegar(InventarioScreen()),
+        accionTexto: 'Revisar producto',
       ));
     }
 
@@ -834,8 +1216,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           titulo: '${p['nombre']}: se agota en ~$dias día(s)',
           mensaje:
               'Quedan ${stock.toStringAsFixed(0)} uds y el ritmo de venta es de ${vendidas.toStringAsFixed(0)} uds cada 30 días. Haz la compra hoy para no perder ventas.',
-          accion: () => _navegar(EntradasScreen(
-              productoInicialId: (p['id'] as num?)?.toInt())),
+          accion: () => _navegar(
+            EntradasScreen(productoInicialId: (p['id'] as num?)?.toInt()),
+          ),
           accionTexto: 'Registrar compra',
         ));
       }
@@ -855,82 +1238,103 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Row(
           children: [
-            Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.auto_awesome,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             const Text(
               'Asistente de Negocio',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        ...insights.take(7).map((i) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                elevation: 1,
-                margin: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: i.accion,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(i.icon, color: i.color, size: 26),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                i.titulo,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
+        ...insights
+            .take(7)
+            .map(
+              (i) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  elevation: 1,
+                  margin: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: i.accion,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(i.icon, color: i.color, size: 26),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  i.titulo,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                i.mensaje,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                const SizedBox(height: 3),
+                                Text(
+                                  i.mensaje,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                                 ),
-                              ),
-                              // Acción Rápida: botón etiquetado dentro de la
-                              // alerta (CIERRE DE CICLO: ver → decidir → actuar).
-                              if (i.accion != null && i.accionTexto != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                          minHeight: 48),
-                                      child: FilledButton.tonalIcon(
-                                        onPressed: i.accion,
-                                        icon: Icon(i.icon, size: 16),
-                                        label: Text(
-                                          i.accionTexto!,
-                                          style: const TextStyle(fontSize: 12),
+                                // Acción Rápida: botón etiquetado dentro de la
+                                // alerta (CIERRE DE CICLO: ver → decidir → actuar).
+                                if (i.accion != null && i.accionTexto != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          minHeight: 48,
+                                        ),
+                                        child: FilledButton.tonalIcon(
+                                          onPressed: i.accion,
+                                          icon: Icon(i.icon, size: 16),
+                                          label: Text(
+                                            i.accionTexto!,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        if (i.accion != null)
-                          Icon(Icons.chevron_right, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      ],
+                          if (i.accion != null)
+                            Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            )),
+            ),
       ],
     );
   }
@@ -972,7 +1376,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Tendencia de ventas: barras horizontales nativas (sin dependencias).
+  /// Tendencia de ventas: gráfico BI (histograma con valores DIRECTOS +
+  /// línea temporal) con tipografía ampliada para PC. Reemplaza las barras
+  /// anteriores que exigían pasar el cursor para ver el monto del día.
   Widget _buildTendenciaVentas() {
     final tituloSerie = switch (_periodo) {
       'hoy' => 'Ventas por Hora (Hoy)',
@@ -981,186 +1387,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _ => 'Ventas por Mes (Año Actual)',
     };
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: _cargandoSerie
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    tituloSerie,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _serieBarras(),
-                ],
-              ),
-      ),
-    );
-  }
-
-  Widget _serieBarras() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final serie = (_serie?['serie'] as List<dynamic>?)
-            ?.cast<Map<String, dynamic>>() ??
-        [];
-    if (serie.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Text(
-          'Sin ventas registradas en el periodo seleccionado.',
-          style: TextStyle(
-            color: colorScheme.onSurfaceVariant,
-            fontSize: 13,
-          ),
+    if (_cargandoSerie) {
+      return const Card(
+        elevation: 2,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 48),
+          child: Center(child: CircularProgressIndicator()),
         ),
       );
     }
 
-    // Normalización de montos: los valores de la API llegan como num/String.
-    final montos = serie
-        .map((f) => (f['montoBs'] as num? ?? f['monto'] as num? ?? 0).toDouble())
-        .toList();
-    final maxMonto = montos.fold<double>(0, (m, v) => v > m ? v : m);
+    final serie =
+        (_serie?['serie'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+        const <Map<String, dynamic>>[];
 
-    return SizedBox(
-      height: 220,
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: maxMonto > 0 ? maxMonto * 1.15 : 1,
-          barTouchData: BarTouchData(
-            enabled: true,
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (_) => colorScheme.inverseSurface,
-              getTooltipItem: (group, gIdx, rod, rIdx) =>
-                  BarTooltipItem(
-                'Bs. ${_moneda(montos[gIdx])}\n',
-                TextStyle(
-                  color: colorScheme.onInverseSurface,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                children: [
-                  TextSpan(
-                    text: '${serie[gIdx]['etiqueta']}',
-                    style: TextStyle(
-                      color: colorScheme.onInverseSurface,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              axisNameWidget: Text(
-                'Bs.',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 42,
-                interval: maxMonto > 0
-                    ? (maxMonto / 3).toDouble().clamp(1, double.infinity)
-                    : 1,
-                getTitlesWidget: (v, meta) => SideTitleWidget(
-                  meta: meta,
-                  space: 6,
-                  child: Text(
-                    _moneda(v),
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 28,
-                getTitlesWidget: (v, meta) {
-                  final i = v.toInt();
-                  if (i < 0 || i >= serie.length) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      '${serie[i]['etiqueta']}',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: maxMonto > 0
-                ? (maxMonto / 3).toDouble().clamp(1, double.infinity)
-                : 1,
-            getDrawingHorizontalLine: (_) => FlLine(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              strokeWidth: 1,
-            ),
-          ),
-          borderData: FlBorderData(
-            show: true,
-            border: Border(
-              bottom: BorderSide(color: colorScheme.outlineVariant),
-            ),
-          ),
-          barGroups: List.generate(serie.length, (i) {
-            return BarChartGroupData(
-              x: i,
-              barRods: [
-                BarChartRodData(
-                  toY: montos[i],
-                  color: colorScheme.primary,
-                  width: _anchoBarra(),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                ),
-              ],
-            );
-          }),
-        ),
-      ),
+    return BiSerieChart(
+      titulo: tituloSerie,
+      serie: serie.map(PuntoSerie.fromJson).toList(),
+      enBs: true,
     );
-  }
-
-  /// Ancho de barra responsivo: móvil angosto usa barras delgadas para que
-  /// 24 tramos horarios quepan sin amontonarse; pantallas anchas engordan.
-  double _anchoBarra() {
-    final ancho = MediaQuery.of(context).size.width;
-    final n = ((_serie?['serie'] as List<dynamic>?)?.length ?? 8);
-    if (ancho < 600) return 8;
-    if (ancho < 1024) return 14;
-    // Escritorio: escala con la densidad de tramos de la serie.
-    return n > 12 ? 16 : 22;
   }
 
   /// Desglose de caja diaria por método de pago + alertas de stock.
@@ -1168,6 +1413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildTopProductos() {
     if (_cargandoSerie || _errorSerie != null) return const SizedBox.shrink();
 
+    final cs = Theme.of(context).colorScheme;
     final top =
         (_serie?['topProductos'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
@@ -1179,11 +1425,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     // Podio: oro, plata, bronce; el resto en slate.
-    const medallas = [
-      Color(0xFFF59E0B),
-      Color(0xFF94A3B8),
-      Color(0xFFB45309),
-    ];
+    const medallas = [Color(0xFFF59E0B), Color(0xFF94A3B8), Color(0xFFB45309)];
     Color colorPosicion(int i) =>
         i < medallas.length ? medallas[i] : const Color(0xFF334155);
 
@@ -1195,8 +1437,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(Icons.emoji_events, color: Color(0xFFF59E0B), size: 20),
             SizedBox(width: 8),
             Text(
-              'Top 5 Productos Más Vendidos',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              'Top 10 Productos Más Vendidos',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -1212,29 +1454,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? _estadoVacio(
                     icono: Icons.emoji_events_outlined,
                     titulo: 'Aún no hay ventas registradas',
-                    mensaje:
-                        'Cuando realices tu primera venta, aquí aparecerán tus productos estrella.',
+                    mensaje: 'Cuando realices tu primera venta, aquí aparecerán tus productos estrella.',
                   )
                 : Column(
                     children: [
                       for (var i = 0; i < top.length; i++)
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              CircleAvatar(
-                                radius: 13,
-                                backgroundColor: colorPosicion(i),
-                                child: Text(
-                                  '${i + 1}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                              // Miniatura WebP del catálogo EPA (resuelta a
+                              // absoluta vía ApiService.urlImagen) + medalla.
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 46,
+                                    height: 46,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      color: cs.surfaceContainerHighest,
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: _miniaturaTop(
+                                        top[i]['imagenUrl'],
+                                        92,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  Positioned(
+                                    top: -4,
+                                    left: -4,
+                                    child: CircleAvatar(
+                                      radius: 11,
+                                      backgroundColor: colorPosicion(i),
+                                      child: Text(
+                                        '${i + 1}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1242,25 +1510,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     Text(
                                       (top[i]['nombre'] ?? '').toString(),
                                       style: const TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 13.5,
                                         fontWeight: FontWeight.w600,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      [
+                                        if ((top[i]['marca'] ?? '')
+                                            .toString()
+                                            .isNotEmpty)
+                                          top[i]['marca'].toString(),
+                                        if ((top[i]['categoria'] ?? '')
+                                            .toString()
+                                            .isNotEmpty)
+                                          top[i]['categoria'].toString(),
+                                      ].join('  ·  ').trim(),
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 6),
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(4),
                                       child: FractionallySizedBox(
                                         alignment: Alignment.centerLeft,
                                         widthFactor: maxUnidades > 0
-                                            ? ((top[i]['unidades'] as num? ??
-                                                          0)
-                                                      .toDouble() /
-                                                  maxUnidades)
-                                                .clamp(0.02, 1.0)
+                                            ? ((top[i]['unidades'] as num? ?? 0)
+                                                          .toDouble() /
+                                                      maxUnidades)
+                                                  .clamp(0.02, 1.0)
                                             : 0.02,
                                         child: Container(
-                                          height: 4,
+                                          height: 5,
                                           color: colorPosicion(i),
                                         ),
                                       ),
@@ -1275,10 +1561,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   Text(
                                     '${_num(top[i]['unidades'])} und',
                                     style: const TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 12.5,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                  const SizedBox(height: 2),
                                   Text(
                                     '\$${_moneda(top[i]['monto'])}',
                                     style: const TextStyle(
@@ -1299,12 +1586,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// Miniatura WebP para el Top de Productos. Resuelve rutas relativas
+  /// (`/productos/SKU.webp`) a absolutas vía [ApiService.urlImagen] y degrada
+  /// a un ícono si no hay imagen o falla la carga (catálogo EPA servido por
+  /// el backend). [px] = ancho en píxeles de dispositivo pedido a la caché.
+  Widget _miniaturaTop(dynamic ruta, int px) {
+    final url = ApiService.urlImagen(ruta?.toString());
+    if (url == null) {
+      return const Center(
+        child: Icon(Icons.inventory_2_outlined, size: 22, color: Colors.grey),
+      );
+    }
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      cacheWidth: px,
+      errorBuilder: (_, __, ___) => const Center(
+        child: Icon(Icons.inventory_2_outlined, size: 22, color: Colors.grey),
+      ),
+      loadingBuilder: (ctx, child, prog) => prog == null
+          ? child
+          : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    );
+  }
+
   Widget _buildCajaDiaria() {
-    final caja = (_serie?['cajaDiaria'] as List<dynamic>?)
+    final caja =
+        (_serie?['cajaDiaria'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
         [];
-    final alertas = (_serie?['alertasStock'] as List<dynamic>?)
+    final alertas =
+        (_serie?['alertasStock'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
+        [];
+    final idsBajoStock =
+        (_serie?['idsBajoStock'] as List<dynamic>?)
+            ?.whereType<num>()
+            .map((id) => id.toInt())
+            .toList() ??
         [];
 
     IconData iconoMetodo(String m) {
@@ -1327,20 +1646,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         const Text(
           'Caja del Día (por método de pago)',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: caja.isEmpty
                 ? _estadoVacio(
                     icono: Icons.point_of_sale_outlined,
                     titulo: 'Sin ventas de hoy todavía',
-                    mensaje:
-                        'Abre una venta desde “Vender” y los cobros aparecerán aquí separados por método de pago.',
+                    mensaje: 'Abre una venta desde “Vender” y los cobros aparecerán aquí separados por método de pago.',
                     accionTexto: 'Vender ahora',
                     onAccion: () => widget.onNavegarModulo != null
                         ? widget.onNavegarModulo!(1)
@@ -1381,14 +1701,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               const Text(
                 'Alertas de Reposición Crítica',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.error,
                   borderRadius: BorderRadius.circular(12),
@@ -1428,29 +1745,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onErrorContainer,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onErrorContainer,
                           ),
                         ),
                         subtitle: Text(
                           'Stock: ${p['Stock_Actual']} (Mín: ${p['Stock_Minimo']})',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Theme.of(context).colorScheme.onErrorContainer,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onErrorContainer,
                           ),
                         ),
                         // Banner accionable → Entradas con precarga de los
                         // productos con quiebre (producto tocado preseleccionado).
                         onTap: () {
-                          final ids = alertas
-                              .map<int>((a) =>
-                                  (a['Producto_ID'] as num?)?.toInt() ?? 0)
-                              .where((id) => id != 0)
-                              .toList();
-                          _navegar(EntradasScreen(
-                            productoInicialId:
-                                (p['Producto_ID'] as num?)?.toInt(),
-                            idsBajoStock: ids,
-                          ));
+                          final ids = idsBajoStock;
+                          _navegar(
+                            EntradasScreen(
+                              productoInicialId: (p['Producto_ID'] as num?)
+                                  ?.toInt(),
+                              idsBajoStock: ids,
+                            ),
+                          );
                         },
                       ),
                     )
@@ -1478,7 +1797,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icono, size: 44, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+          Icon(
+            icono,
+            size: 44,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+          ),
           const SizedBox(height: 10),
           Text(
             titulo,
@@ -1512,30 +1835,155 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildEncabezado() {
+    final cs = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compacto = constraints.maxWidth < 620;
+        final acciones = Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: () => _navegar(PosScreen()),
+              icon: const Icon(Icons.point_of_sale, size: 18),
+              label: const Text('Nueva venta'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: cs.primary,
+                minimumSize: const Size(48, 44),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _navegar(InventarioScreen()),
+              icon: const Icon(Icons.inventory_2_outlined, size: 18),
+              label: const Text('Inventario'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.65)),
+                minimumSize: const Size(48, 44),
+              ),
+            ),
+          ],
+        );
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(compacto ? 18 : 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [cs.primary, Color.lerp(cs.primary, cs.tertiary, 0.7)!],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: cs.primary.withValues(alpha: 0.16),
+                blurRadius: 22,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: compacto
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _identidadEncabezado(),
+                    const SizedBox(height: 18),
+                    acciones,
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: _identidadEncabezado()),
+                    const SizedBox(width: 16),
+                    acciones,
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _identidadEncabezado() {
+    final ahora = DateTime.now();
+    const dias = [
+      'lunes',
+      'martes',
+      'miércoles',
+      'jueves',
+      'viernes',
+      'sábado',
+      'domingo',
+    ];
+    const meses = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ];
+    final fecha =
+        '${dias[ahora.weekday - 1]}, ${ahora.day} de ${meses[ahora.month - 1]}';
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blueAccent,
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.white.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           ),
-          child: const Icon(Icons.storefront, color: Colors.white, size: 34),
+          child: const Icon(Icons.storefront, color: Colors.white, size: 30),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Ferretería Adrialga C.A.',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
               Text(
-                'Sistema de gestión de ventas e inventario',
+                'Ferretería Adrialga C.A.',
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: MediaQuery.sizeOf(context).width < 600 ? 20 : 24,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: -0.4,
                 ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                'Ventas, inventario y caja bajo control',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 14,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    fecha,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1543,8 +1991,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
   }
-
-
 
   Widget _buildSubmenu() {
     return GridView.count(
@@ -1607,10 +2053,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            if (badge != null) ...[
-              const SizedBox(height: 6),
-              badge,
-            ],
+            if (badge != null) ...[const SizedBox(height: 6), badge],
           ],
         ),
       ),
@@ -1630,9 +2073,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 3: // Clientes
         return _badge('${resumen['totalClientes'] ?? 0} reg.', Colors.teal);
       case 6: // Proveedores
-        return _badge('${resumen['totalProveedores'] ?? 0} reg.', Colors.indigo);
+        return _badge(
+          '${resumen['totalProveedores'] ?? 0} reg.',
+          Colors.indigo,
+        );
       case 2: // Facturas & Ventas
-        return _badge('${resumen['totalFacturas'] ?? 0} emitidas', Colors.green);
+        return _badge(
+          '${resumen['totalFacturas'] ?? 0} emitidas',
+          Colors.green,
+        );
       case 5: // Entradas & Inventario → alerta stock bajo
         final stockBajo = (alertas['conteoStockBajo'] ?? 0) as int;
         return stockBajo > 0 ? _badgeAlert(stockBajo) : null;
@@ -1672,7 +2121,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.warning_amber_rounded, size: 11, color: Colors.white),
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 11,
+            color: Colors.white,
+          ),
           const SizedBox(width: 3),
           Text(
             '$count bajo stock',
@@ -1695,9 +2148,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 2;
   }
 
-// Navegación por pestañas gestionada por el AppShell (Drawer eliminado).
+  // Navegación por pestañas gestionada por el AppShell (Drawer eliminado).
 }
-
 
 /// Tarjeta de período con botón pop-up "Ver Facturas".
 /// Tap en la tarjeta → solo selecciona el período (métricas con caché SWR);
@@ -1746,14 +2198,14 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
       curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
       reverseCurve: Curves.easeIn,
     );
-    _desplazamiento = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.elasticOut,
-      reverseCurve: Curves.easeIn,
-    ));
+    _desplazamiento =
+        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Curves.elasticOut,
+            reverseCurve: Curves.easeIn,
+          ),
+        );
     if (widget.seleccionada) _controller.value = 1.0;
   }
 
@@ -1894,4 +2346,3 @@ class _TarjetaPeriodoState extends State<_TarjetaPeriodo>
     );
   }
 }
-
