@@ -1,0 +1,54 @@
+name: Publicar frontend en GitHub Pages
+
+# Por qué existe: en el equipo de desarrollo `flutter build web` no arranca
+# (named pipes de Windows: "CreateFile failed 231"). La CI de GitHub sí tiene
+# toolchain limpia, así que el bundle se construye acá y se publica solo.
+# Además deja INCUSTADA la URL de la API de producción, para que en la demo no
+# haya que escribir nada en el selector del login.
+#
+# Disparo: push a main, o manual desde la pestaña Actions ("Run workflow").
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-y-publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: Build web con la API de producción incrustada
+        env:
+          API_BASE_URL: https://ferreteria-adrialga-backend.onrender.com/api
+        run: |
+          flutter build web --release \
+            --base-href /ferreteria-adrialga-frontend/ \
+            --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      # El ERD de 12 tablas es HTML estático: se copia al sitio para que la
+      # profesora pueda abrir el diagrama sin necesidad de la app.
+      - name: Copiar el ERD al sitio
+        run: cp docs_public/ERD_Adrialga_12_tablas.html build/web/
+
+      - name: Publicar en la rama gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          publish_branch: gh-pages
+          # La rama gh-pages es artefacto de build: se reescribe entera.
+          force_orphan: true
