@@ -39,6 +39,18 @@ jobs:
             --base-href /ferreteria-adrialga-frontend/ \
             --dart-define=API_BASE_URL="$API_BASE_URL"
 
+      # El sitio de Pages vive en el subpath /ferreteria-adrialga-frontend/ y el
+      # loader resuelve canvasKitBaseUrl contra el <base href>: si el valor
+      # empieza con "/" pide el motor a la raíz del dominio → 404 → app en blanco.
+      # Este paso hace fallar la publicación en vez de enviar una página rota.
+      - name: Verificar que CanvasKit use ruta relativa
+        run: |
+          if grep -q '"/canvaskit/"' build/web/flutter_bootstrap.js; then
+            echo "::error::canvasKitBaseUrl empieza con '/': rompe el subpath de GitHub Pages"
+            exit 1
+          fi
+          grep -n 'canvasKitBaseUrl' build/web/flutter_bootstrap.js
+
       # El ERD de 12 tablas es HTML estático: se copia al sitio para que la
       # profesora pueda abrir el diagrama sin necesidad de la app.
       - name: Copiar el ERD al sitio
