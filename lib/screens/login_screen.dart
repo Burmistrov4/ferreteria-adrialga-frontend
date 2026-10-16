@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
@@ -20,6 +21,21 @@ class _LoginScreenState extends State<LoginScreen> {
   // Selector de entorno: Producción (Railway) o Local (backend XAMPP en LAN).
   bool _usarLocal = false;
   final _ipController = TextEditingController(); // ej. 192.168.98.153
+
+  /// Esquema con el que el navegador cargó la app (web). Fuera de web no existe
+  /// el concepto de contenido mixto, así que devuelve '' y el aviso se apaga.
+  String get _esquemaPagina => kIsWeb ? Uri.base.scheme : '';
+
+  /// Aviso de contenido mixto: la app se sirve por HTTPS (p. ej. GitHub Pages)
+  /// y "Local Wi-Fi" apunta a un backend http:// → el navegador bloquea la
+  /// petición y el login falla con un mensaje que no explica el motivo.
+  bool get _avisoContenidoMixto {
+    if (!_usarLocal) return false;
+    final ip = _ipController.text.trim();
+    // Sin IP todavía se asume http (el servidor local no usa certificado).
+    final url = ip.isEmpty ? 'http://' : normalizarUrlLocal(ip);
+    return bloqueadaPorContenidoMixto(url, _esquemaPagina);
+  }
 
   @override
   void initState() {
@@ -198,6 +214,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _ipController,
+                          // Reconstruye para recalcular el aviso de contenido
+                          // mixto mientras se escribe la IP.
+                          onChanged: (_) => setState(() {}),
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
                           decoration: const InputDecoration(
@@ -207,6 +226,49 @@ class _LoginScreenState extends State<LoginScreen> {
                             border: OutlineInputBorder(),
                           ),
                         ),
+                        // La causa NO es la IP ni el backend: el navegador no
+                        // permite que una página https:// llame a http://.
+                        // Se explica en pantalla en vez de dejar el error
+                        // genérico de credenciales.
+                        if (_avisoContenidoMixto) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color:
+                                  Theme.of(context).colorScheme.errorContainer,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 18,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Estás abriendo la app desde https:// y el '
+                                    'navegador bloquea las llamadas a http:// '
+                                    '(contenido mixto). Para usar Local Wi-Fi, '
+                                    'abre la app desde el propio servidor: '
+                                    'http://<IP>:3000',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onErrorContainer,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                     const SizedBox(height: 24),

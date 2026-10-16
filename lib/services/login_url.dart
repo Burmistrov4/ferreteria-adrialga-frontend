@@ -27,3 +27,24 @@ String normalizarUrlLocal(String input) {
   final puerto = u.hasPort ? u.port : 3000; // backend Express en :3000
   return '$scheme://${u.host}:$puerto/api';
 }
+
+/// ¿El navegador va a BLOQUEAR esta llamada por contenido mixto?
+///
+/// Una página servida por HTTPS tiene prohibido pedir recursos `http://`: el
+/// navegador corta la petición ANTES de que salga y la consola muestra
+/// `Mixed Content: ... This request has been blocked`. No es un fallo del
+/// backend ni de la IP: es política del navegador y no se puede desactivar
+/// desde el código.
+///
+/// Medido el 2026-10-16: el frontend publicado en GitHub Pages (HTTPS) intentaba
+/// `http://192.168.55.156:3000/api/auth/login` y el navegador lo bloqueó; la UI
+/// mostraba "Credenciales incorrectas o servidor fuera de línea", que no
+/// describe la causa. De ahí este aviso explícito.
+///
+/// [esquemaPagina] es el esquema con el que se cargó la app (en web,
+/// `Uri.base.scheme`). Fuera de web se pasa '' o 'file' y nunca hay bloqueo.
+bool bloqueadaPorContenidoMixto(String urlApi, String esquemaPagina) {
+  if (esquemaPagina != 'https') return false;
+  // 'https://…' no empieza por 'http://' (la 's' lo impide): solo marca http.
+  return urlApi.startsWith('http://');
+}

@@ -16,6 +16,16 @@ void check(String name, String actual, String expected) {
   print('${ok ? 'PASS' : 'FAIL'} · $name · obtuve="$actual" esperaba="$expected"');
 }
 
+void checkBool(String name, bool actual, bool expected) {
+  final ok = actual == expected;
+  if (ok) {
+    _pass++;
+  } else {
+    _fail++;
+  }
+  print('${ok ? 'PASS' : 'FAIL'} · $name · obtuve=$actual esperaba=$expected');
+}
+
 void main() {
   // Caso del bug reportado: IP con protocolo pero SIN puerto (iba al :80).
   check('http://192.168.55.201/ → +puerto+api',
@@ -51,8 +61,25 @@ void main() {
           : 'BAD:$r',
       r);
 
-  print('\nLOGIN-URL: PASS=$_pass FAIL=$_fail');
-  if (_fail > 0) {
+  // ── Contenido mixto: página https:// llamando a un backend http:// ──
+  // Caso MEDIDO el 2026-10-16: la web de GitHub Pages (HTTPS) pedía
+  // http://192.168.55.156:3000/api/auth/login y Chrome la bloqueó antes de
+  // salir ("Mixed Content ... has been blocked").
+  checkBool('página https + api http → bloqueada',
+      bloqueadaPorContenidoMixto('http://192.168.55.156:3000/api', 'https'),
+      true);
+  checkBool('página http + api http → permitida',
+      bloqueadaPorContenidoMixto('http://192.168.55.156:3000/api', 'http'),
+      false);
+  checkBool('página https + api https → permitida',
+      bloqueadaPorContenidoMixto('https://192.168.55.156:3000/api', 'https'),
+      false);
+  checkBool('fuera de web (esquema vacío) → permitida',
+      bloqueadaPorContenidoMixto('http://192.168.55.156:3000/api', ''), false);
+  checkBool('sin IP todavía (se asume http) → bloqueada',
+      bloqueadaPorContenidoMixto('http://', 'https'), true);
+
+  print('\nLOGIN-URL: PASS=$_pass FAIL=$_fail');  if (_fail > 0) {
     throw StateError('fallaron $_fail casos');
   }
 }
