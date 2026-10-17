@@ -242,9 +242,20 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     final objetivo = _vpSize.isEmpty || _vpSize.height <= 0
         ? 16 / 9
         : _vpSize.width / _vpSize.height;
-    var mejor = n >= 12 ? 4 : 3;
+    // Preferir cuadrículas SIN huecos: si `n` se reparte exacto entre las
+    // columnas candidatas, no queda una última fila a medias. Para las 12
+    // tablas esto permite 6×2 (llena todo el ancho) o 4×3, en vez de 5×3 con
+    // tres huecos a la derecha.
+    final candidatos = [3, 4, 5, 6].where((c) => c <= n).toList();
+    final divisores = candidatos.where((c) => n % c == 0).toList();
+    final pool = divisores.isNotEmpty ? divisores : candidatos;
+
+    // Pantalla ancha (proyector/desktop): más columnas = mejor uso del ancho.
+    if (objetivo >= 1.7 && pool.contains(6)) return 6;
+
+    var mejor = pool.first;
     var mejorError = double.infinity;
-    for (var c = 3; c <= 6; c++) {
+    for (final c in pool) {
       final filas = (n / c).ceil();
       final ancho = c * _anchoNodo + (c - 1) * _gapX;
       final alto = filas * 300 + (filas - 1) * _gapY;
