@@ -968,11 +968,16 @@ class _InventarioScreenState extends State<InventarioScreen> {
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
       child: SingleChildScrollView(
+        // Espacio inferior para que el FAB "Nuevo Producto" no tape la última
+        // fila ni los botones de acciones (antes se solapaban).
+        padding: const EdgeInsets.only(bottom: 96),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            columnSpacing: 14,
-            horizontalMargin: 12,
+            // Más separación entre columnas y sin margen lateral: la tabla
+            // aprovecha el ancho disponible en vez de dejar una franja vacía.
+            columnSpacing: 26,
+            horizontalMargin: 0,
             dataRowMinHeight: 44,
             dataRowMaxHeight: 56,
             headingRowHeight: 44,
