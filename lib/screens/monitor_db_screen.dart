@@ -645,6 +645,13 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
             Positioned.fill(
               child: InteractiveViewer(
                 transformationController: _transform,
+                // `constrained: false` es IMPRESCINDIBLE: con el valor por
+                // defecto (true) el hijo se fuerza al tamaño del viewport y
+                // todo lo que exceda ese alto/ancho se RECORTA (la tercera
+                // fila de tablas desaparecía y quedaba una franja vacía).
+                // Sin restricción, el lienzo conserva su tamaño real y el
+                // encaje (fit) puede mostrarlo completo.
+                constrained: false,
                 minScale: 0.15,
                 maxScale: 3.0,
                 boundaryMargin: const EdgeInsets.all(600),
