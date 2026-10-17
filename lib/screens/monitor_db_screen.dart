@@ -538,6 +538,9 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                 ),
               ),
             const Spacer(),
+            // En móvil el buscador no cabe en el AppBar: se oculta en vez de
+            // desbordar (la búsqueda sigue disponible en pantallas grandes).
+            if (MediaQuery.sizeOf(context).width >= 720)
             SizedBox(
               width: 235,
               height: 34,
@@ -874,7 +877,12 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
               bottom: 12,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
-                children: [_leyenda(), const SizedBox(height: 6), _controlesZoom()],
+                children: [
+                  // La leyenda tapa las tablas en pantallas estrechas.
+                  if (MediaQuery.sizeOf(context).width >= 600) _leyenda(),
+                  const SizedBox(height: 6),
+                  _controlesZoom(),
+                ],
               ),
             ),
           ],
@@ -914,12 +922,14 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
               ),
             ),
           ),
-          Text(
-            _modo == 'presentacion'
-                ? 'Vista de presentación · modelo expuesto'
-                : 'Vista completa · toda la base',
-            style: const TextStyle(fontSize: 11, color: Color(0x77CBD5E1)),
-          ),
+          // En móvil este texto se recortaba; se omite en pantallas estrechas.
+          if (MediaQuery.sizeOf(context).width >= 720)
+            Text(
+              _modo == 'presentacion'
+                  ? 'Vista de presentación · modelo expuesto'
+                  : 'Vista completa · toda la base',
+              style: const TextStyle(fontSize: 11, color: Color(0x77CBD5E1)),
+            ),
         ],
       ),
     );
