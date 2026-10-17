@@ -288,9 +288,12 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     }
     if (contenidoW <= 0 || contenidoH <= 0) return;
 
-    const pad = 26.0;
+    // Margen mínimo (10 px) para aprovechar toda la pantalla; y se permite
+    // ampliar hasta 1.6× cuando el contenido es pequeño, en vez de dejarlo
+    // diminuto con franjas vacías alrededor.
+    const pad = 10.0;
     final escala = math.min(
-      1.0,
+      1.6,
       math.min(
         (_vpSize.width - pad * 2) / contenidoW,
         (_vpSize.height - pad * 2) / contenidoH,
@@ -618,14 +621,24 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
           _programarAjuste();
         }
 
+        // El lienzo debe abarcar el CONTENIDO REAL: borde derecho/inferior de
+        // cada nodo (posición + su tamaño), no solo su esquina superior. Antes
+        // se usaba `max(dy) + 300`, que recortaba las tablas altas de la última
+        // fila (productos tiene 16 columnas) y dejaba espacio muerto.
         final ancho = _posiciones.isEmpty
             ? 1200.0
-            : _posiciones.values.map((o) => o.dx).reduce(math.max) +
-                _anchoNodo +
-                80;
+            : _posiciones.entries
+                    .map((e) =>
+                        e.value.dx + (_tamanos[e.key]?.width ?? _anchoNodo))
+                    .reduce(math.max) +
+                40;
         final alto = _posiciones.isEmpty
             ? 800.0
-            : _posiciones.values.map((o) => o.dy).reduce(math.max) + 300;
+            : _posiciones.entries
+                    .map((e) =>
+                        e.value.dy + (_tamanos[e.key]?.height ?? 300))
+                    .reduce(math.max) +
+                40;
 
         return Stack(
           children: [
