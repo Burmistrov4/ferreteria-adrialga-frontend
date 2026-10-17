@@ -424,15 +424,26 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     child: Text('Todos los proveedores',
                         overflow: TextOverflow.ellipsis),
                   ),
-                  ..._proveedores.map(
-                    (p) => DropdownMenuItem<int?>(
-                      value: p['Proveedor_ID'] as int?,
-                      child: Text(
-                        '${p['Razon_Social'] ?? '—'}',
-                        overflow: TextOverflow.ellipsis,
+                  // El ID puede llegar como String desde la API: se parsea sin
+                  // castear y se descartan los registros no numéricos (un null
+                  // aquí duplicaría la opción "Todos los proveedores").
+                  ..._proveedores
+                      .where((p) =>
+                          double.tryParse(
+                            p['Proveedor_ID']?.toString() ?? '',
+                          ) !=
+                          null)
+                      .map(
+                        (p) => DropdownMenuItem<int?>(
+                          value: double.tryParse(
+                            p['Proveedor_ID'].toString(),
+                          )?.toInt(),
+                          child: Text(
+                            '${p['Razon_Social'] ?? '—'}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
                   const DropdownMenuItem<int?>(
                     value: 0,
                     child: Text('Sin proveedor atribuible',

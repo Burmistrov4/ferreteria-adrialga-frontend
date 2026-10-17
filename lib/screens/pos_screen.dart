@@ -93,6 +93,13 @@ class _PosScreenState extends State<PosScreen> {
   double _tasaCambio = 36.50;
   bool _tasaEsBCV = false;
 
+  /// Cerrojo anti doble cobro: mientras se resuelve el cliente / el diálogo de
+  /// cobro está por abrirse, el botón "COBRAR" y F12 quedan inactivos. Sin
+  /// esto, dos invocaciones concurrentes (o un F12 repetido durante los hasta
+  /// 10 s de `_obtenerConsumidorFinal`) generaban DOS facturas del mismo
+  /// carrito → doble cobro y doble descuento de stock.
+  bool _procesandoVenta = false;
+
   // ── Shorcutos mouseless (Ferretería): F2 buscador · F3 cantidad · F12 cobro ──
   final FocusNode _busquedaFocus = FocusNode();
   final List<FocusNode> _focosCantidad = [];
@@ -110,7 +117,8 @@ class _PosScreenState extends State<PosScreen> {
       return true;
     }
     if (k == LogicalKeyboardKey.f12) {
-      if (_carrito.isNotEmpty) _iniciarProcesoVenta();
+      // Cerrojo: con una venta en curso F12 no abre un segundo cobro.
+      if (_carrito.isNotEmpty && !_procesandoVenta) _iniciarProcesoVenta();
       return true;
     }
     return false;
@@ -619,82 +627,96 @@ class _PosScreenState extends State<PosScreen> {
 
   Future<void> _iniciarProcesoVenta() async {
     if (!_puedeCobrar) return;
-
-    // Resolución del cliente efectivo: asignado explícitamente o el
-    // registro real de Consumidor Final rescatado del backend.
-    final ClienteModel cliente =
-        _clienteSeleccionado ??
-        (await _obtenerConsumidorFinal()) ??
-        ClienteModel.consumidorFinal();
+    // Cerrojo contra invocaciones concurrentes (botón + F12 + sheet móvil).
+    if (_procesandoVenta) return;
     if (!mounted) return;
+    setState(() => _procesandoVenta = true);
 
-    final resultadoPago = await showDialog<Map<String, dynamic>>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => CobroDialog(
-        totalUSD: _totalPagar,
-        tasaCambio: _tasaCambio,
-        tasaEsBCV: _tasaEsBCV,
-      ),
-    );
+    try {
+      // Resolución del cliente efectivo: asignado explícitamente o el
+      // registro real de Consumidor Final rescatado del backend.
+      final ClienteModel cliente =
+          _clienteSeleccionado ??
+          (await _obtenerConsumidorFinal()) ??
+          ClienteModel.consumidorFinal();
+      if (!mounted) return;
 
-    if (resultadoPago != null) {
-      final facturaData = {
-        "Cliente_ID": cliente.clienteId,
-        "Tipo_Pago": "Multipago",
-        "Tasa_Cambio": resultadoPago['tasaCambio'],
-        "Detalles_Pago": resultadoPago['detallesPago'],
-        "Vuelto_USD": resultadoPago['vueltoUSD'],
-        "Vuelto_VES": resultadoPago['vueltoVES'],
-        "Detalles": _carrito
-            .map(
-              (item) => {
-                "Producto_ID": item.producto.productoId,
-                if (item.variante != null)
-                  "Variante_ID": item.variante!.varianteId,
-                "Cantidad": item.cantidad,
-                "Precio_Unitario": item.precioVentaEfectivo,
-              },
-            )
-            .toList(),
-      };
+      final resultadoPago = await showDialog<Map<String, dynamic>>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => CobroDialog(
+          totalUSD: _totalPagar,
+          tasaCambio: _tasaCambio,
+          tasaEsBCV: _tasaEsBCV,
+        ),
+      );
 
-      final result = await ApiService.createFactura(facturaData);
+      if (resultadoPago != null) {
+        final facturaData = {
+          "Cliente_ID": cliente.clienteId,
+          "Tipo_Pago": "Multipago",
+          "Tasa_Cambio": resultadoPago['tasaCambio'],
+          "Detalles_Pago": resultadoPago['detallesPago'],
+          "Vuelto_USD": resultadoPago['vueltoUSD'],
+          "Vuelto_VES": resultadoPago['vueltoVES'],
+          "Detalles": _carrito
+              .map(
+                (item) => {
+                  "Producto_ID": item.producto.productoId,
+                  if (item.variante != null)
+                    "Variante_ID": item.variante!.varianteId,
+                  "Cantidad": item.cantidad,
+                  "Precio_Unitario": item.precioVentaEfectivo,
+                },
+              )
+              .toList(),
+        };
 
-      if (mounted) {
-        if (result['success'] == true) {
-          _mostrarSnackBar('¡Venta procesada con éxito!');
-          // Auto-impresión del ticket térmico (si el cajero lo marcó).
-          if (resultadoPago['imprimirTicket'] == true &&
-              result['factura'] is Map) {
-            try {
-              final fm = FacturaModel.fromJson(
-                (result['factura'] as Map).cast<String, dynamic>(),
-              );
-              await ImpresionService.imprimirTicketFactura(fm);
-            } catch (_) {
-              // La impresión no debe bloquear la venta ya confirmada.
+        final result = await ApiService.createFactura(facturaData);
+
+        if (mounted) {
+          if (result['success'] == true) {
+            _mostrarSnackBar('¡Venta procesada con éxito!');
+            // Auto-impresión del ticket térmico (si el cajero lo marcó).
+            if (resultadoPago['imprimirTicket'] == true &&
+                result['factura'] is Map) {
+              try {
+                final fm = FacturaModel.fromJson(
+                  (result['factura'] as Map).cast<String, dynamic>(),
+                );
+                await ImpresionService.imprimirTicketFactura(fm);
+              } catch (_) {
+                // La impresión no debe bloquear la venta ya confirmada.
+              }
             }
+            setState(() {
+              _carrito.clear();
+              _clienteSeleccionado = null;
+              _esConsumidorFinal = false;
+              _indiceActivo = null;
+            });
+            _sincronizarRespaldoCarrito();
+            // El backend emite `db_update: ventas` antes de responder. Si el
+            // WebSocket ya actualizó el catálogo, no repetir la misma consulta;
+            // si no llegó el evento (socket caído), mantener un fallback local.
+            final ultima = _ultimaActualizacionProductos;
+            if (ultima == null ||
+                DateTime.now().difference(ultima) >
+                    const Duration(milliseconds: 800)) {
+              _cargarProductos();
+            }
+          } else {
+            _mostrarSnackBar('Error procesando venta: ${result['error']}');
           }
-          setState(() {
-            _carrito.clear();
-            _clienteSeleccionado = null;
-            _esConsumidorFinal = false;
-            _indiceActivo = null;
-          });
-          _sincronizarRespaldoCarrito();
-          // El backend emite `db_update: ventas` antes de responder. Si el
-          // WebSocket ya actualizó el catálogo, no repetir la misma consulta;
-          // si no llegó el evento (socket caído), mantener un fallback local.
-          final ultima = _ultimaActualizacionProductos;
-          if (ultima == null ||
-              DateTime.now().difference(ultima) >
-                  const Duration(milliseconds: 800)) {
-            _cargarProductos();
-          }
-        } else {
-          _mostrarSnackBar('Error procesando venta: ${result['error']}');
         }
+      }
+    } finally {
+      // Se libera SIEMPRE, incluso si el diálogo se cerró o la venta falló,
+      // para no dejar el POS permanentemente sin poder cobrar.
+      if (mounted) {
+        setState(() => _procesandoVenta = false);
+      } else {
+        _procesandoVenta = false;
       }
     }
   }
@@ -1057,16 +1079,24 @@ return Row(
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text(
-              'COBRAR Y FACTURAR',
-              style: TextStyle(fontSize: 15),
+            icon: _procesandoVenta
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.point_of_sale),
+            label: Text(
+              _procesandoVenta ? 'PROCESANDO...' : 'COBRAR Y FACTURAR',
+              style: const TextStyle(fontSize: 15),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: cs.primary,
               foregroundColor: cs.onPrimary,
             ),
-            onPressed: !_puedeCobrar
+            // Deshabilitado mientras el cobro está en curso: evita que un
+            // segundo toque/F12 dispare una segunda factura del mismo carrito.
+            onPressed: (!_puedeCobrar || _procesandoVenta)
                 ? null
                 : (onCobrar ?? _iniciarProcesoVenta),
           ),

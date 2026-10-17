@@ -2083,7 +2083,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Colors.green,
         );
       case 5: // Entradas & Inventario → alerta stock bajo
-        final stockBajo = (alertas['conteoStockBajo'] ?? 0) as int;
+        // Sin casteo directo: el conteo puede venir como String desde la API.
+        final stockBajo =
+            (double.tryParse(alertas['conteoStockBajo']?.toString() ?? '') ?? 0)
+                .toInt();
         return stockBajo > 0 ? _badgeAlert(stockBajo) : null;
       default:
         return null;

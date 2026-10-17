@@ -12,6 +12,7 @@ import '../models/cliente_model.dart';
 import '../models/factura_model.dart';
 import '../models/producto_model.dart';
 import 'download_service.dart';
+import 'login_url.dart';
 
 /// Resultado paginado del inventario (FASE C).
 ///
@@ -987,7 +988,39 @@ class ApiService {
   }
 
   // --- AUTENTICACIÓN Y TASA ---
-  static Future<bool> login(String usuario, String password) async {
+  /// Cuánto se espera al backend antes de rendirse en el login.
+  ///
+  /// 75 s, no 8 s. Render (plan gratuito) duerme el servicio a los 15 minutos
+  /// sin tráfico y el arranque en frío tarda decenas de segundos. Con el límite
+  /// anterior de 8 s, un login sobre el servicio dormido se abortaba SIEMPRE y
+  /// la app culpaba a las credenciales, que eran correctas. Medido el
+  /// 2026-10-16: el mismo `admin`/`admin123` fallaba en frío y entraba en
+  /// caliente.
+  static const Duration _timeoutLogin = Duration(seconds: 75);
+
+  /// Despierta el backend en segundo plano (fire-and-forget).
+  ///
+  /// Se llama al abrir la app: si el servicio está dormido, empieza a arrancar
+  /// mientras el usuario escribe sus credenciales, de modo que el login llegue
+  /// con el servidor ya caliente. Los errores se ignoran a propósito — es una
+  /// optimización, no un requisito: si falla, el login reintenta y da un
+  /// mensaje honesto.
+  static Future<void> despertarServidor() async {
+    try {
+      await http
+          .get(Uri.parse('$baseUrl/health'))
+          .timeout(const Duration(seconds: 75));
+    } catch (_) {
+      // Sin red, DNS caído o servicio dormido: nada que hacer aquí.
+    }
+  }
+
+  /// Intenta iniciar sesión y devuelve POR QUÉ falló (ver [ResultadoLogin]).
+  ///
+  /// Antes devolvía un `bool`, así que la UI no podía distinguir una contraseña
+  /// equivocada de un servidor que no contestó: ambos casos mostraban el mismo
+  /// "Credenciales incorrectas o servidor fuera de línea".
+  static Future<ResultadoLogin> login(String usuario, String password) async {
     try {
       final response = await http
           .post(
@@ -996,7 +1029,7 @@ class ApiService {
             // El backend espera las claves en CamelCase: Credencial y Password
             body: jsonEncode({'Credencial': usuario, 'Password': password}),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(_timeoutLogin);
       _verificarSesion(response);
 
       if (response.statusCode == 200) {
@@ -1006,11 +1039,26 @@ class ApiService {
         if (usu is Map) {
           _saveRol((usu['rol'] ?? usu['Rol'])?.toString());
         }
-        return true;
+        return ResultadoLogin.ok;
       }
-      return false;
+
+      // El servidor SÍ contestó y rechazó las credenciales.
+      if (response.statusCode == 400 ||
+          response.statusCode == 401 ||
+          response.statusCode == 403) {
+        return ResultadoLogin.credenciales;
+      }
+
+      // 5xx: el servidor contestó pero está roto (p. ej. la base apagada).
+      // NO es culpa de la contraseña y conviene reintentar.
+      return ResultadoLogin.inesperado;
+    } on TimeoutException {
+      // Ni una respuesta en el plazo: casi siempre el servicio estaba dormido.
+      return ResultadoLogin.servidor;
     } catch (_) {
-      return false;
+      // SocketException (sin red / DNS), ClientException (CORS o contenido
+      // mixto)… Todo esto es "no llegamos al servidor", no "clave mala".
+      return ResultadoLogin.servidor;
     }
   }
 
@@ -1028,8 +1076,22 @@ class ApiService {
         final data = jsonDecode(response.body);
         final tasa = data['tasa'];
         if (tasa != null) {
-          final v = (tasa as num).toDouble();
+          // NUNCA castear datos de la API: el backend puede mandar la tasa
+          // como String ("36.50") y el cast `(tasa as num)` revienta (o, con
+          // el catch externo, caía en silencio al respaldo 36.50 → el POS
+          // cobraba Bs e IGTF erróneos).
+          final v = double.tryParse(tasa.toString());
+          if (v == null || v <= 0) {
+            // Tasa inválida: NO inventamos 36.50; conservamos la última
+            // válida conocida y marcamos el aviso para la interfaz.
+            _lastTasaEsBCV = false;
+            _lastAvisoTasa =
+                'El backend devolvió una tasa no válida ("$tasa"). Se conserva '
+                'la última tasa conocida: ${_lastTasa.toStringAsFixed(2)}.';
+            return _lastTasa;
+          }
           final fuente = (data['fuente'] ?? '').toString();
+          _hayTasaValida = true;
           _lastTasa = v;
           // Solo es "tasa BCV" si viene del banco en vivo (por cualquiera de
           // las dos vías). El histórico y el respaldo se marcan como tales para
@@ -1051,7 +1113,15 @@ class ApiService {
         final data = jsonDecode(response.body);
         final tasa = data['tasa'];
         if (tasa != null) {
-          final v = (tasa as num).toDouble();
+          final v = double.tryParse(tasa.toString());
+          if (v == null || v <= 0) {
+            _lastTasaEsBCV = false;
+            _lastAvisoTasa =
+                'La tasa pública devuelta no es válida ("$tasa"). Se conserva '
+                'la última tasa conocida: ${_lastTasa.toStringAsFixed(2)}.';
+            return _lastTasa;
+          }
+          _hayTasaValida = true;
           _lastTasa = v;
           _lastTasaEsBCV = true;
           _lastFuenteTasa = 'bcv-en-vivo';
@@ -1060,18 +1130,31 @@ class ApiService {
         }
       }
     } catch (_) {}
-    _lastTasa = 36.50;
     _lastTasaEsBCV = false;
     _lastFuenteTasa = 'fallback-local';
-    _lastAvisoTasa =
-        'No se pudo contactar al backend para obtener la tasa. Se usa un valor '
-        'de respaldo local.';
+    // Si ya hubo alguna tasa válida en la sesión, se conserva: sobreescribirla
+    // con 36.50 falsearía Bs, IGTF y márgenes. Solo se usa 36.50 como último
+    // recurso cuando nunca se obtuvo una tasa real.
+    if (!_hayTasaValida) {
+      _lastTasa = 36.50;
+      _lastAvisoTasa =
+          'No se pudo contactar al backend para obtener la tasa. Se usa un '
+          'valor de respaldo local (36.50) que puede NO ser la tasa actual.';
+    } else {
+      _lastAvisoTasa =
+          'No se pudo contactar al backend para obtener la tasa. Se mantiene '
+          'la última tasa conocida (${_lastTasa.toStringAsFixed(2)}); verifícala '
+          'antes de cobrar.';
+    }
     return _lastTasa;
   }
 
   // Última tasa consultada y si proviene del BCV real (no del respaldo).
   // Útil para que la interfaz advierta cuando el servicio BCV esté caído.
   static double _lastTasa = 36.50;
+  /// ¿Se obtuvo al menos una tasa numérica válida desde el backend en esta
+  /// sesión? Evita degradar en silencio una tasa buena al respaldo 36.50.
+  static bool _hayTasaValida = false;
   static bool _lastTasaEsBCV = false;
   static String? _lastFuenteTasa;
   static String? _lastAvisoTasa;

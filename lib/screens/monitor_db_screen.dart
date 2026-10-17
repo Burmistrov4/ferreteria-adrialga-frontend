@@ -96,6 +96,11 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
   );
   bool _panelVisible = true;
 
+  // Búsqueda de navegación: localiza tablas por nombre o por columna.
+  final TextEditingController _busquedaController = TextEditingController();
+  String _busqueda = '';
+  final Set<String> _coincidencias = {};
+
   /// Tamaño real del lienzo (lo reporta el LayoutBuilder). Se usa para ajustar
   /// el diagrama a la ventana en cuanto hay datos.
   Size _vpSize = Size.zero;
@@ -125,6 +130,7 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
   void dispose() {
     SocketService.offDbUpdateEvento(_alEventoDb);
     _temporizadorResaltado?.cancel();
+    _busquedaController.dispose();
     _pulso.dispose();
     _transform.dispose();
     super.dispose();
@@ -156,6 +162,9 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
         _cargando = false;
       });
       _calcularLayout();
+      // La búsqueda sobrevive a una recarga: se vuelve a aplicar para que las
+      // coincidencias sigan resaltadas tras refrescar el esquema.
+      if (mounted && _busqueda.isNotEmpty) _aplicarBusqueda(_busqueda);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -347,6 +356,53 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     _ajustarVista();
   }
 
+  /// Resalta en el diagrama las tablas cuyo nombre, o alguna de sus columnas,
+  /// coincida con la búsqueda. Reutiliza el resaltado de la actividad en vivo,
+  /// así las coincidencias "laten" igual que un nodo afectado por un cambio.
+  ///
+  /// La búsqueda PERSISTE: se cancela el temporizador que borra el resaltado
+  /// automático a los 1,8 s (propio de los eventos `db_update`).
+  void _aplicarBusqueda(String q) {
+    final consulta = q.trim().toLowerCase();
+    _temporizadorResaltado?.cancel();
+
+    if (consulta.isEmpty) {
+      setState(() {
+        _busqueda = q;
+        _coincidencias.clear();
+        _resaltadas.clear();
+      });
+      _pulso.stop();
+      _pulso.value = 0;
+      return;
+    }
+
+    final encontradas = <String>{};
+    for (final t in _tablas) {
+      final porNombre = t.nombre.toLowerCase().contains(consulta);
+      final porColumna =
+          t.columnas.any((c) => c.nombre.toLowerCase().contains(consulta));
+      if (porNombre || porColumna) encontradas.add(t.nombre);
+    }
+
+    setState(() {
+      _busqueda = q;
+      _coincidencias
+        ..clear()
+        ..addAll(encontradas);
+      _resaltadas
+        ..clear()
+        ..addAll(encontradas);
+    });
+
+    if (encontradas.isNotEmpty) {
+      if (!_pulso.isAnimating) _pulso.repeat();
+    } else {
+      _pulso.stop();
+      _pulso.value = 0;
+    }
+  }
+
   void _abrirEnVentana() {
     final url = Uri.base
         .replace(fragment: 'monitor', queryParameters: const {})
@@ -398,6 +454,73 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                   ),
                 ),
               ),
+            const Spacer(),
+            SizedBox(
+              width: 235,
+              height: 34,
+              child: TextField(
+                controller: _busquedaController,
+                style: const TextStyle(fontSize: 13, color: Color(0xFFE2E8F0)),
+                cursorColor: const Color(0xFF93C5FD),
+                onChanged: _aplicarBusqueda,
+                decoration: InputDecoration(
+                  hintText: 'Buscar tabla o columna…',
+                  hintStyle:
+                      const TextStyle(fontSize: 12, color: Color(0x66CBD5E1)),
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  prefixIcon: const Icon(Icons.search,
+                      size: 16, color: Color(0x88CBD5E1)),
+                  prefixIconConstraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
+                  suffixIcon: _busqueda.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Limpiar búsqueda',
+                          iconSize: 15,
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(minWidth: 26, minHeight: 26),
+                          color: const Color(0x99CBD5E1),
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _busquedaController.clear();
+                            _aplicarBusqueda('');
+                          },
+                        ),
+                  filled: true,
+                  fillColor: const Color(0xFF0F1A2E),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF334155)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF334155)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF60A5FA)),
+                  ),
+                ),
+              ),
+            ),
+            if (_busqueda.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF14532D),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF22C55E)),
+                ),
+                child: Text(
+                  '${_coincidencias.length}/${_tablas.length}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF86EFAC)),
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -1125,8 +1248,11 @@ class _TablaNodo {
 
   factory _TablaNodo.fromJson(Map<String, dynamic> j) => _TablaNodo(
         nombre: j['nombre']?.toString() ?? '',
-        filas: (j['filas'] as num?)?.toInt() ?? 0,
-        activos: (j['activos'] as num?)?.toInt(),
+        // Sin casteos: el backend puede mandar estos conteos como String.
+        filas: (double.tryParse(j['filas']?.toString() ?? '') ?? 0).toInt(),
+        activos: j['activos'] == null
+            ? null
+            : (double.tryParse(j['activos'].toString()) ?? 0).toInt(),
         columnas: [
           for (final c in (j['columnas'] as List? ?? const []))
             _Columna.fromJson(Map<String, dynamic>.from(c as Map)),

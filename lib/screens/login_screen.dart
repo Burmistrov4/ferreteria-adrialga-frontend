@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -17,6 +19,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _userController = TextEditingController();
   final _passController = TextEditingController();
   bool _loading = false;
+
+  /// Segundos que lleva el intento en curso. Sirve para avisar de que el
+  /// servidor está despertando en vez de dejar un spinner mudo: el arranque en
+  /// frío de la capa gratuita puede tardar casi un minuto (medido 2026-10-16).
+  int _segundosEsperando = 0;
+  Timer? _relojEspera;
 
   // Selector de entorno: Producción (Railway) o Local (backend XAMPP en LAN).
   bool _usarLocal = false;
@@ -51,11 +59,17 @@ class _LoginScreenState extends State<LoginScreen> {
               c.replaceAll('http://', '').replaceAll(':3000/api', '');
         });
       }
+      // Empezar a despertar el backend YA, en segundo plano, mientras el
+      // usuario escribe: si la capa gratuita está dormida, para cuando pulse
+      // INGRESAR ya llevará decenas de segundos arrancando. No se espera ni se
+      // avisa si falla: es una optimización, el login tiene su propio mensaje.
+      ApiService.despertarServidor();
     });
   }
 
   @override
   void dispose() {
+    _relojEspera?.cancel();
     _userController.dispose();
     _passController.dispose();
     _ipController.dispose();
@@ -75,7 +89,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _segundosEsperando = 0;
+    });
 
     // Fija la URL base al momento del login y la persiste. Si NO se usa local,
     // se limpia cualquier runtime guardado → en web vuelve al mismo origen.
@@ -108,25 +125,40 @@ class _LoginScreenState extends State<LoginScreen> {
       ApiService.setBaseUrlRuntime(null); // producción por defecto
     }
 
-    final success = await ApiService.login(user, pass);
+    // Reloj para el mensaje de espera: a partir de los 6 s avisa de que el
+    // servidor está despertando, para que la espera no parezca un cuelgue.
+    _relojEspera?.cancel();
+    _relojEspera = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !_loading) return;
+      setState(() => _segundosEsperando++);
+    });
+
+    final resultado = await ApiService.login(user, pass);
 
     if (!mounted) return;
+    _relojEspera?.cancel();
     setState(() => _loading = false);
 
-    if (success) {
+    if (resultado == ResultadoLogin.ok) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const AppShell()),
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: Theme.of(context).colorScheme.error,
-          content: const Text(
-              'Credenciales incorrectas o servidor fuera de línea'),
-        ),
-      );
+      return;
     }
+
+    // El mensaje ahora distingue las dos causas que antes se confundían en uno
+    // solo ("Credenciales incorrectas o servidor fuera de línea"): una clave
+    // mal escrita no es lo mismo que un backend dormido que no contestó.
+    // Si el fallo es del servidor, el segundo intento suele funcionar, así que
+    // el aviso dura más y lo dice explícitamente.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Theme.of(context).colorScheme.error,
+        duration: Duration(seconds: reintentable(resultado) ? 9 : 4),
+        content: Text(mensajeLogin(resultado)),
+      ),
+    );
   }
 
   @override
@@ -295,6 +327,22 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                       ),
                     ),
+                    // Aviso de espera larga. El arranque en frío de la capa
+                    // gratuita puede tardar casi un minuto; sin esto el usuario
+                    // ve un spinner mudo y cree que la app se colgó (o peor:
+                    // que la contraseña está mal). Medido el 2026-10-16.
+                    if (_loading && _segundosEsperando >= 6)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          mensajeEsperaLogin(_segundosEsperando),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
                     // ── Acceso discreto al Monitor de Base de Datos ──
                     // Abre el diagrama en vivo del esquema. En modo
                     // presentación se muestran las 12 tablas del modelo.

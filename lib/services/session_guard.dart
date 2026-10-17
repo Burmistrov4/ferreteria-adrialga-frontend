@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../screens/login_screen.dart';
 import 'shortcut_service.dart';
+import 'socket_service.dart';
 
 /// Guarda de sesión: intercepción global de expiración del JWT (401
 /// TOKEN_EXPIRADO del backend). Al dispararse:
@@ -32,7 +33,13 @@ class SessionGuard {
     }
     carritoActual = [];
 
-    // 2) Redirigir al login con mensaje claro, reemplazando todo el stack.
+    // 2) Apagar el WebSocket de la sesión muerta. Sin esto, al reingresar,
+    //    `SocketService.start()` devuelve en `if (_started) return;` y se
+    //    reutiliza el socket anterior con el JWT ya vencido: la sincronización
+    //    en tiempo real (stock, caja, dashboard) queda muerta toda la sesión.
+    SocketService.stop();
+
+    // 3) Redirigir al login con mensaje claro, reemplazando todo el stack.
     final nav = ShortcutService.navigatorKey.currentState;
     if (nav == null) return;
     nav.pushAndRemoveUntil(

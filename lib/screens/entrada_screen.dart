@@ -359,11 +359,28 @@ class _EntradasScreenState extends State<EntradasScreen> {
     }
 
     final cantidad = int.tryParse(_cantidadController.text.trim()) ?? 0;
-    final costo = double.tryParse(_costoController.text.trim()) ?? 0.0;
+    // Mismo normalizador de separador decimal que usa la vista previa del CPP.
+    final costo =
+        double.tryParse(_costoController.text.trim().replaceAll(',', '.')) ??
+        -1.0;
 
     if (cantidad <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingrese una cantidad válida')),
+      );
+      return;
+    }
+
+    // El costo 0 o negativo corrompe el costo promedio ponderado (baja el CPP
+    // artificialmente y falsea los márgenes): se bloquea antes de enviar.
+    if (costo <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ingrese un costo unitario válido mayor a 0. Un costo en 0 o '
+            'negativo corrompe el costo promedio del inventario.',
+          ),
+        ),
       );
       return;
     }
