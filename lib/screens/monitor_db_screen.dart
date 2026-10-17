@@ -461,10 +461,16 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     }
     final clave = mejor;
     if (clave == null) return;
+    // El punto se coloca en el MEDIO de la curva seleccionada (no donde se
+    // tocó), que es donde el usuario espera agarrarlo.
+    final r = _relaciones.firstWhere((x) => _claveArista(x) == clave);
+    final g = _geoArista(r, _posiciones, _tamanos);
+    final aj = _ajustesAristas[clave] ?? Offset.zero;
+    final medio = _bezierEn(g.p1, g.c1 + aj, g.c2 + aj, g.p2, 0.5);
     setState(() {
       _aristaActiva = clave;
       _ajustesAristas.putIfAbsent(clave, () => Offset.zero);
-      _dotArista = p;
+      _dotArista = medio;
     });
   }
 
@@ -738,15 +744,11 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                     // Mantener pulsada una conexión muestra un punto temporal
                     // y permite arrastrarla para curvarla (no conecta ni
                     // desconecta nada).
-                    onLongPressStart: (d) =>
-                        _seleccionarArista(d.localPosition),
-                    onLongPressMoveUpdate: (d) => _moverArista(d.localPosition),
-                    onLongPressEnd: (_) {
-                      setState(() {
-                        _aristaActiva = null;
-                        _dotArista = null;
-                      });
-                    },
+                    // Un TAP selecciona la conexión y muestra su punto. El
+                    // arrastre se hace sobre el propio punto (widget), que
+                    // gana la arena de gestos frente al InteractiveViewer;
+                    // el long-press la perdía y por eso no se podía ajustar.
+                    onTapUp: (d) => _seleccionarArista(d.localPosition),
                     child: Stack(
                       children: [
                       // Aristas FK (debajo de los nodos).
@@ -797,11 +799,15 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                                       if (s == null) return;
                                       final base =
                                           Size(_anchoNodo, _altoNodo(t));
+                                      // Escala UNIFORME: el contenido crece
+                                      // proporcionalmente (no se deforma).
+                                      final escala = math.max(
+                                        1.0,
+                                        (s.width + d.delta.dx) / base.width,
+                                      ).clamp(1.0, 3.0);
                                       final nueva = Size(
-                                        math.max(base.width,
-                                            s.width + d.delta.dx),
-                                        math.max(base.height,
-                                            s.height + d.delta.dy),
+                                        base.width * escala,
+                                        base.height * escala,
                                       );
                                       _usuarioManipulo = true;
                                       setState(() {
@@ -826,6 +832,33 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                        ),
+                      // Punto de control arrastrable (widget, no solo pintado):
+                      // su GestureDetector gana el gesto y permite curvar.
+                      if (_dotArista != null)
+                        Positioned(
+                          left: _dotArista!.dx - 9,
+                          top: _dotArista!.dy - 9,
+                          child: GestureDetector(
+                            onPanUpdate: (d) =>
+                                _moverArista(_dotArista! + d.delta),
+                            onPanEnd: (_) => setState(() {
+                              _aristaActiva = null;
+                              _dotArista = null;
+                            }),
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFBBF24),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0xFF0F1A2E),
+                                  width: 3,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -1054,11 +1087,18 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     final size = _tamanos[t.nombre] ?? const Size(_anchoNodo, 120);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
-      width: size.width,
-      // Altura explícita: el pintor de aristas ancla las FK al borde del nodo
-      // usando `_tamanos`; si la altura fuera intrínseca, las curvas no
-      // tocarían el borde real de la tarjeta.
-      height: size.height,
+      // Se conserva el tamaño NATURAL y se ESCALA el contenedor completo
+      // (letras y filas incluidas). Antes solo crecía la caja y el texto
+      // quedaba igual de pequeño.
+      transform: Matrix4.diagonal3Values(
+        (size.width / _anchoNodo).clamp(1.0, 3.0),
+        (size.width / _anchoNodo).clamp(1.0, 3.0),
+        1,
+      ),
+      transformAlignment: Alignment.topLeft,
+      width: _anchoNodo,
+      // Altura natural: el escalado la multiplica junto con el ancho.
+      height: _altoNodo(t),
       decoration: BoxDecoration(
         color: const Color(0xFF16213A),
         borderRadius: BorderRadius.circular(10),
