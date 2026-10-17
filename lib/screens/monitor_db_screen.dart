@@ -84,6 +84,8 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
   // Geometría del diagrama (offsets por nombre de tabla).
   final Map<String, Offset> _posiciones = {};
   final Map<String, Size> _tamanos = {};
+  /// Tamaños ajustados a mano con el tirador de la esquina (no persistentes).
+  final Map<String, Size> _tamanosPersonalizados = {};
 
   // Actividad en vivo.
   final List<_EventoDb> _eventos = [];
@@ -212,7 +214,8 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
 
     for (var i = 0; i < n; i++) {
       final t = _tablas[i];
-      final size = Size(_anchoNodo, _altoNodo(t));
+      final size =
+          _tamanosPersonalizados[t.nombre] ?? Size(_anchoNodo, _altoNodo(t));
       tam[t.nombre] = size;
       final fila = i ~/ columnas;
       final col = i % columnas;
@@ -714,7 +717,54 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                                 _posiciones[t.nombre] = actual + d.delta;
                               });
                             },
-                            child: _nodoTabla(t),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                _nodoTabla(t),
+                                // Tirador de redimensionado (esquina inferior
+                                // derecha). Solo AGRANDA: nunca por debajo del
+                                // tamaño natural, así el contenido jamás se
+                                // desborda; al crecer, las filas se estiran con
+                                // el nuevo ancho/alto.
+                                Positioned(
+                                  right: -5,
+                                  bottom: -5,
+                                  child: GestureDetector(
+                                    onPanUpdate: (d) {
+                                      final s = _tamanos[t.nombre];
+                                      if (s == null) return;
+                                      final base =
+                                          Size(_anchoNodo, _altoNodo(t));
+                                      final nueva = Size(
+                                        math.max(base.width,
+                                            s.width + d.delta.dx),
+                                        math.max(base.height,
+                                            s.height + d.delta.dy),
+                                      );
+                                      _usuarioManipulo = true;
+                                      setState(() {
+                                        _tamanosPersonalizados[t.nombre] = nueva;
+                                        _tamanos[t.nombre] = nueva;
+                                      });
+                                    },
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.resizeDownRight,
+                                      child: Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xCC60A5FA),
+                                          borderRadius:
+                                              BorderRadius.circular(3),
+                                          border: Border.all(
+                                              color: const Color(0xFF93C5FD)),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                     ],
