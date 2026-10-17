@@ -87,6 +87,11 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
   /// Tamaños ajustados a mano con el tirador de la esquina (no persistentes).
   final Map<String, Size> _tamanosPersonalizados = {};
 
+  // Ajuste manual de conexiones (no persistente): clave "desde->hasta".
+  final Map<String, Offset> _ajustesAristas = {};
+  String? _aristaActiva;
+  Offset? _dotArista;
+
   // Actividad en vivo.
   final List<_EventoDb> _eventos = [];
   final Set<String> _resaltadas = {};
@@ -434,6 +439,47 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     }
   }
 
+  /// Busca la conexión más cercana al punto pulsado (radio 18 px) y la marca
+  /// como activa: su punto de control aparece y se puede arrastrar.
+  void _seleccionarArista(Offset p) {
+    String? mejor;
+    var mejorDist = 18.0;
+    for (final r in _relaciones) {
+      if (!_posiciones.containsKey(r.desde) ||
+          !_posiciones.containsKey(r.hasta)) {
+        continue;
+      }
+      final g = _geoArista(r, _posiciones, _tamanos);
+      for (var i = 1; i < 20; i++) {
+        final q = _bezierEn(g.p1, g.c1, g.c2, g.p2, i / 20);
+        final d = (q - p).distance;
+        if (d < mejorDist) {
+          mejorDist = d;
+          mejor = _claveArista(r);
+        }
+      }
+    }
+    final clave = mejor;
+    if (clave == null) return;
+    setState(() {
+      _aristaActiva = clave;
+      _ajustesAristas.putIfAbsent(clave, () => Offset.zero);
+      _dotArista = p;
+    });
+  }
+
+  /// Arrastra el punto de control de la conexión activa (ajuste no persistente).
+  void _moverArista(Offset p) {
+    final clave = _aristaActiva;
+    if (clave == null) return;
+    final anterior = _dotArista ?? p;
+    setState(() {
+      _ajustesAristas[clave] =
+          (_ajustesAristas[clave] ?? Offset.zero) + (p - anterior);
+      _dotArista = p;
+    });
+  }
+
   void _abrirEnVentana() {
     final url = Uri.base
         .replace(fragment: 'monitor', queryParameters: const {})
@@ -687,8 +733,22 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                 child: SizedBox(
                   width: ancho,
                   height: alto,
-                  child: Stack(
-                    children: [
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    // Mantener pulsada una conexión muestra un punto temporal
+                    // y permite arrastrarla para curvarla (no conecta ni
+                    // desconecta nada).
+                    onLongPressStart: (d) =>
+                        _seleccionarArista(d.localPosition),
+                    onLongPressMoveUpdate: (d) => _moverArista(d.localPosition),
+                    onLongPressEnd: (_) {
+                      setState(() {
+                        _aristaActiva = null;
+                        _dotArista = null;
+                      });
+                    },
+                    child: Stack(
+                      children: [
                       // Aristas FK (debajo de los nodos).
                       Positioned.fill(
                         child: AnimatedBuilder(
@@ -700,6 +760,8 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                               tamanos: _tamanos,
                               resaltadas: _resaltadas,
                               fase: _pulso.value,
+                              ajustes: _ajustesAristas,
+                              aristaActiva: _aristaActiva,
                             ),
                           ),
                         ),
@@ -767,7 +829,8 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                             ),
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1418,12 +1481,48 @@ class _EventoDb {
 /// Con actividad reciente las aristas se iluminan y un PULSO viaja por la curva
 /// ([fase] 0→1), de modo que la línea también "trabaja" en pantalla y no solo
 /// el registro de texto.
+/// Clave estable de una arista (para guardar su ajuste manual).
+String _claveArista(_Relacion r) => '${r.desde}->${r.hasta}';
+
+/// Punto de una Bézier cúbica en el parámetro [t] (0..1).
+Offset _bezierEn(Offset p0, Offset c1, Offset c2, Offset p3, double t) {
+  final u = 1 - t;
+  return Offset(
+    u * u * u * p0.dx + 3 * u * u * t * c1.dx + 3 * u * t * t * c2.dx + t * t * t * p3.dx,
+    u * u * u * p0.dy + 3 * u * u * t * c1.dy + 3 * u * t * t * c2.dy + t * t * t * p3.dy,
+  );
+}
+
+/// Geometría de una arista: extremos y puntos de control. Compartida por el
+/// pintor y por el hit-test del ajuste, para que ambos usen la MISMA curva.
+({Offset p1, Offset c1, Offset c2, Offset p2}) _geoArista(
+  _Relacion r,
+  Map<String, Offset> posiciones,
+  Map<String, Size> tamanos,
+) {
+  final a = posiciones[r.desde]!;
+  final b = posiciones[r.hasta]!;
+  final sa = tamanos[r.desde] ?? const Size(200, 100);
+  final sb = tamanos[r.hasta] ?? const Size(200, 100);
+  final centroA = a + Offset(sa.width / 2, sa.height / 2);
+  final centroB = b + Offset(sb.width / 2, sb.height / 2);
+  final bDerecha = centroB.dx >= centroA.dx;
+  final p1 = Offset(bDerecha ? a.dx + sa.width : a.dx, centroA.dy);
+  final p2 = Offset(bDerecha ? b.dx : b.dx + sb.width, centroB.dy);
+  final dx = (p2.dx - p1.dx).abs() * 0.5 + 30;
+  final c1 = Offset(p1.dx + (bDerecha ? dx : -dx), p1.dy);
+  final c2 = Offset(p2.dx + (bDerecha ? -dx : dx), p2.dy);
+  return (p1: p1, c1: c1, c2: c2, p2: p2);
+}
+
 class _AristasPainter extends CustomPainter {
   final List<_Relacion> relaciones;
   final Map<String, Offset> posiciones;
   final Map<String, Size> tamanos;
   final Set<String> resaltadas;
   final double fase;
+  final Map<String, Offset> ajustes;
+  final String? aristaActiva;
 
   _AristasPainter({
     required this.relaciones,
@@ -1431,6 +1530,8 @@ class _AristasPainter extends CustomPainter {
     required this.tamanos,
     required this.resaltadas,
     required this.fase,
+    this.ajustes = const {},
+    this.aristaActiva,
   });
 
   @override
@@ -1439,9 +1540,6 @@ class _AristasPainter extends CustomPainter {
       final a = posiciones[r.desde];
       final b = posiciones[r.hasta];
       if (a == null || b == null) continue;
-      final sa = tamanos[r.desde] ?? const Size(200, 100);
-      final sb = tamanos[r.hasta] ?? const Size(200, 100);
-
       final activa =
           resaltadas.contains(r.desde) || resaltadas.contains(r.hasta);
       final paint = Paint()
@@ -1449,26 +1547,26 @@ class _AristasPainter extends CustomPainter {
         ..strokeWidth = activa ? 2.0 : 1.1
         ..color = activa ? const Color(0xAA34D399) : const Color(0x553B82F6);
 
-      final centroA = a + Offset(sa.width / 2, sa.height / 2);
-      final centroB = b + Offset(sb.width / 2, sb.height / 2);
-      final bDerecha = centroB.dx >= centroA.dx;
-
-      final p1 = Offset(
-        bDerecha ? a.dx + sa.width : a.dx,
-        centroA.dy,
-      );
-      final p2 = Offset(
-        bDerecha ? b.dx : b.dx + sb.width,
-        centroB.dy,
-      );
-      final dx = (p2.dx - p1.dx).abs() * 0.5 + 30;
-      final c1 = Offset(p1.dx + (bDerecha ? dx : -dx), p1.dy);
-      final c2 = Offset(p2.dx + (bDerecha ? -dx : dx), p2.dy);
+      // Geometría compartida con el hit-test + ajuste manual (arrastre).
+      final geo = _geoArista(r, posiciones, tamanos);
+      final aj = ajustes[_claveArista(r)] ?? Offset.zero;
+      final p1 = geo.p1;
+      final p2 = geo.p2;
+      final c1 = geo.c1 + aj;
+      final c2 = geo.c2 + aj;
 
       final path = Path()
         ..moveTo(p1.dx, p1.dy)
         ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
       canvas.drawPath(path, paint);
+
+      // Punto de control TEMPORAL: solo aparece mientras se mantiene pulsada
+      // esta conexión; desaparece al soltar (el ajuste sí se conserva).
+      if (aristaActiva == _claveArista(r)) {
+        final punto = _bezierEn(p1, c1, c2, p2, 0.5);
+        canvas.drawCircle(punto, 7, Paint()..color = const Color(0xFFFBBF24));
+        canvas.drawCircle(punto, 3, Paint()..color = const Color(0xFF0F1A2E));
+      }
 
       // Pulso viajero: un segmento brillante que recorre la curva.
       if (activa) {
