@@ -1096,7 +1096,17 @@ class ApiService {
           // Solo es "tasa BCV" si viene del banco en vivo (por cualquiera de
           // las dos vías). El histórico y el respaldo se marcan como tales para
           // que la interfaz advierta al usuario.
-          _lastTasaEsBCV = fuente == 'bcv-en-vivo' || fuente == 'bcv-directo';
+          // El backend puede obtener la tasa oficial por varias vías: directa,
+          // por proxy o por un espejo en JSON que republica el BCV. TODAS son
+          // tasa BCV en vivo; antes solo se reconocían dos y las demás se
+          // etiquetaban como "respaldo" aunque el dato fuera oficial.
+          const fuentesBcvEnVivo = <String>{
+            'bcv-en-vivo',
+            'bcv-directo',
+            'bcv-proxy',
+            'bcv-api-espejo',
+          };
+          _lastTasaEsBCV = fuentesBcvEnVivo.contains(fuente);
           _lastFuenteTasa = fuente;
           _lastAvisoTasa = data['aviso']?.toString();
           return v;

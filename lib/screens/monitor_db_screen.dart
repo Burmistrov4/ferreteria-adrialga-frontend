@@ -94,7 +94,10 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     vsync: this,
     duration: const Duration(milliseconds: 1200),
   );
-  bool _panelVisible = true;
+  // El panel de actividad arranca OCULTO: el diagrama necesita todo el ancho
+  // para que las 12 tablas se vean grandes y completas (antes el panel le
+  // robaba ~300 px y el diagrama quedaba recortado). Se abre con el botón.
+  bool _panelVisible = false;
 
   // Búsqueda de navegación: localiza tablas por nombre o por columna.
   final TextEditingController _busquedaController = TextEditingController();
@@ -538,7 +541,13 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
           IconButton(
             tooltip: _panelVisible ? 'Ocultar registro' : 'Mostrar registro',
             icon: Icon(_panelVisible ? Icons.chevron_right : Icons.chevron_left),
-            onPressed: () => setState(() => _panelVisible = !_panelVisible),
+            onPressed: () {
+              setState(() => _panelVisible = !_panelVisible);
+              // Al cambiar el ancho disponible, reajustar para que TODAS las
+              // tablas vuelvan a caber (antes quedaban recortadas).
+              _usuarioManipulo = false;
+              _programarAjuste();
+            },
           ),
           const SizedBox(width: 6),
         ],
@@ -603,7 +612,10 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
           _vpSize = vp;
           // Reajustar al redimensionar solo si el usuario no ha movido la vista
           // a mano (si la movió, respetamos su encuadre).
-          if (!_usuarioManipulo) _programarAjuste();
+          // Reajustar SIEMPRE que cambie el área disponible (redimensionar,
+          // abrir/cerrar el panel). Antes se respetaba el encuadre manual y el
+          // diagrama quedaba recortado sin forma de recuperarlo salvo el botón.
+          _programarAjuste();
         }
 
         final ancho = _posiciones.isEmpty
