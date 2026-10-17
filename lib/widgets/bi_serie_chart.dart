@@ -505,6 +505,47 @@ class _LineaPainter extends CustomPainter {
         Offset(xFor(i), yFor(valores[i])),
     ];
 
+    // ── Caso especial: UN solo dato ────────────────────────────────────────
+    // Con un único punto no hay línea que trazar: el relleno de área producía
+    // un triángulo extraño. Se dibuja una guía punteada hasta la base y un
+    // punto destacado con su valor, que es lo que realmente se quiere mostrar.
+    if (puntos.length == 1) {
+      final p = puntos.first;
+      final guia = Paint()
+        ..color = color.withValues(alpha: 0.35)
+        ..strokeWidth = 1.2;
+      for (var y = p.dy; y < top + h; y += 8) {
+        canvas.drawLine(
+          Offset(p.dx, y),
+          Offset(p.dx, y + 4 > top + h ? top + h : y + 4),
+          guia,
+        );
+      }
+      canvas.drawCircle(p, 7, Paint()..color = color.withValues(alpha: 0.25));
+      canvas.drawCircle(p, 4.5, Paint()..color = color);
+      _text(
+        canvas,
+        formatoValor(valores.first),
+        Offset(p.dx, p.dy - 16),
+        color: valueColor,
+        size: 13,
+        anchorX: 0.5,
+        anchorY: 1,
+      );
+      if (etiquetas.isNotEmpty) {
+        _text(
+          canvas,
+          etiquetas.first,
+          Offset(p.dx, top + h + 14),
+          color: labelColor,
+          size: 11.5,
+          anchorX: 0.5,
+          anchorY: 0,
+        );
+      }
+      return;
+    }
+
     // Curva suavizada (Catmull-Rom → Bézier cúbica).
     final linea = _suavizar(puntos);
 
