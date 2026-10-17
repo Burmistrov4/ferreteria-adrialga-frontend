@@ -89,6 +89,8 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
   final List<_EventoDb> _eventos = [];
   final Set<String> _resaltadas = {};
   Timer? _temporizadorResaltado;
+  /// Debounce para recargar los conteos del esquema tras un `db_update`.
+  Timer? _recargaTimer;
   final TransformationController _transform = TransformationController();
   late final AnimationController _pulso = AnimationController(
     vsync: this,
@@ -133,6 +135,7 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
   void dispose() {
     SocketService.offDbUpdateEvento(_alEventoDb);
     _temporizadorResaltado?.cancel();
+    _recargaTimer?.cancel();
     _busquedaController.dispose();
     _pulso.dispose();
     _transform.dispose();
@@ -353,6 +356,14 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
       setState(() => _resaltadas.clear());
       _pulso.stop();
       _pulso.value = 0;
+    });
+
+    // LIVE REAL: además de iluminar el nodo afectado, se recargan los conteos
+    // del esquema (con debounce) para que las filas/activos cambien en vivo.
+    // Antes solo se resaltaba el nodo y los números quedaban congelados.
+    _recargaTimer?.cancel();
+    _recargaTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) _cargar(silencioso: true);
     });
   }
 
@@ -665,7 +676,10 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
                 constrained: false,
                 minScale: 0.15,
                 maxScale: 3.0,
-                boundaryMargin: const EdgeInsets.all(600),
+                // Sin límite de arrastre: se puede llevar cualquier tabla a
+                // cualquier parte (como en drawdb). El lienzo además crece solo
+                // porque `ancho`/`alto` se recalculan desde las posiciones.
+                boundaryMargin: const EdgeInsets.all(double.infinity),
                 onInteractionStart: (_) => _usuarioManipulo = true,
                 child: SizedBox(
                   width: ancho,
