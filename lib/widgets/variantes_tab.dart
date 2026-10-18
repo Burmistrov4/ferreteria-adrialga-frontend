@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/producto_model.dart';
 import '../models/variante_model.dart';
 import '../services/api_service.dart';
+import '../utils/picker_imagen.dart';
 
 /// Eje de atributo del generador matricial (nombre + valores separados por coma).
 class _AtributoCtrl {
@@ -47,6 +48,9 @@ class _VarianteFila {
   bool yaPersistida;
   int? varianteId;
 
+  /// Imagen propia de la variante (null → hereda la del producto).
+  String? imagenUrl;
+
   _VarianteFila({
     required this.sku,
     required this.atributos,
@@ -56,6 +60,7 @@ class _VarianteFila {
     String margenInicial = '',
     this.yaPersistida = false,
     this.varianteId,
+    this.imagenUrl,
   })  : stockCtrl = TextEditingController(text: stockInicial),
         costoCtrl = TextEditingController(text: costoInicial),
         precioCtrl = TextEditingController(text: precioInicial),
@@ -150,6 +155,7 @@ class _VariantesTabState extends State<VariantesTab> {
                     v.margenPropio != null ? v.margenPropio!.toStringAsFixed(2) : '',
                 yaPersistida: true,
                 varianteId: v.varianteId,
+                imagenUrl: v.imagenUrl,
               ))
           .toList();
 
@@ -291,6 +297,7 @@ class _VariantesTabState extends State<VariantesTab> {
                       f.precioCtrl.text.trim().replaceAll(',', '.')) ??
                   0.0,
               if (f.margenOverride != null) 'margen': f.margenOverride,
+              if (f.imagenUrl != null) 'imagen': f.imagenUrl,
             })
         .toList();
     final res = await ApiService.crearVariantesBulk(
@@ -310,6 +317,26 @@ class _VariantesTabState extends State<VariantesTab> {
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
+    }
+  }
+
+  /// Sube una imagen para la variante. Si ya está persistida se guarda al
+  /// instante; si es nueva, se envía en el bulk al pulsar "Guardar".
+  Future<void> _subirImagenVariante(_VarianteFila f) async {
+    final elegido = await elegirImagen();
+    if (elegido == null) return;
+    final url =
+        await ApiService.subirImagenProducto(elegido.bytes, elegido.mime);
+    if (!mounted) return;
+    if (url == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo subir la imagen')),
+      );
+      return;
+    }
+    setState(() => f.imagenUrl = url);
+    if (f.varianteId != null) {
+      await ApiService.actualizarVariante(f.varianteId!, {'imagen': url});
     }
   }
 
@@ -444,6 +471,20 @@ class _VariantesTabState extends State<VariantesTab> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
+                          ),
+                          IconButton(
+                            tooltip: f.imagenUrl == null
+                                ? 'Subir imagen de la variante'
+                                : 'Cambiar imagen de la variante',
+                            constraints: const BoxConstraints(
+                                minWidth: 48, minHeight: 48),
+                            icon: Icon(
+                              f.imagenUrl == null
+                                  ? Icons.add_photo_alternate_outlined
+                                  : Icons.photo,
+                              color: cs.primary,
+                            ),
+                            onPressed: () => _subirImagenVariante(f),
                           ),
                           IconButton(
                             tooltip: f.yaPersistida

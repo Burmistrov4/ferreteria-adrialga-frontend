@@ -11,6 +11,9 @@ class ProductoVariante {
   final bool activo;
   final Map<String, String> atributos;
 
+  /// Imagen propia de la variante (null → hereda la del producto).
+  final String? imagenUrl;
+
   /// Margen propio de la variante (null → hereda del producto/categoría).
   final double? margenPropio;
 
@@ -25,6 +28,7 @@ class ProductoVariante {
     required this.stock,
     this.activo = true,
     this.atributos = const {},
+    this.imagenUrl,
     this.margenPropio,
     this.margenEfectivo = 0,
   });
@@ -44,6 +48,7 @@ class ProductoVariante {
       // FASE 3: antes `is bool ? ... : true`, asi que un tinyint 0 de MySQL
       // se interpretaba como "activo". numB entiende 1/0/"0"/"false".
       activo: numB(json['activo'] ?? json['Activo']),
+      imagenUrl: (json['imagenUrl'] ?? json['Imagen_URL'])?.toString(),
       atributos: json['atributos'] is Map
           ? (json['atributos'] as Map)
               .map((k, v) => MapEntry(k.toString(), v.toString()))
