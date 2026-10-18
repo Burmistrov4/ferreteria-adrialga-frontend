@@ -631,11 +631,21 @@ class _LineaPainter extends CustomPainter {
       // mediante toque para evitar ruido visual y colisiones en móvil.
       if (mostrarValor.contains(i) && !esSel) {
         final etiqueta = formatoValor(valores[i]);
-        final anchoEtiqueta = etiqueta.length > 13 ? 76.0 : 68.0;
-        final x = px.clamp(
-          left + anchoEtiqueta / 2,
-          left + w - anchoEtiqueta / 2,
-        );
+        // En los extremos se alinea HACIA DENTRO: el primero a la derecha del
+        // eje Y (antes chocaba con la marca "Bs 0") y el último a la izquierda
+        // del borde (antes se recortaba). Los intermedios van centrados.
+        final esPrimero = i == 0;
+        final esUltimo = i == idxLast;
+        final anchorX = esPrimero ? 0.0 : (esUltimo ? 1.0 : 0.5);
+        final anchoEtiqueta = etiqueta.length * 6.2;
+        final x = esPrimero
+            ? px + 6
+            : (esUltimo
+                ? px - 6
+                : px.clamp(
+                    left + anchoEtiqueta / 2,
+                    left + w - anchoEtiqueta / 2,
+                  ));
         _text(
           canvas,
           etiqueta,
@@ -643,7 +653,7 @@ class _LineaPainter extends CustomPainter {
           color: valueColor,
           size: 11.5,
           bold: true,
-          anchorX: 0.5,
+          anchorX: anchorX,
           anchorY: 1,
         );
       }

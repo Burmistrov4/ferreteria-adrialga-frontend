@@ -463,6 +463,10 @@ class _ProductoDialogState extends State<ProductoDialog> {
             key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                // Separación uniforme: sin esto las etiquetas flotantes de
+                // cada campo se montaban sobre el campo anterior (se veían
+                // solapadas en la pestaña "Datos Generales").
+                spacing: 12,
                 children: [
                   TextFormField(
                     controller: _skuController,

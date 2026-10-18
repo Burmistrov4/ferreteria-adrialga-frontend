@@ -26,7 +26,19 @@ String _num(dynamic v) {
 
 String _moneda(dynamic v) {
   final n = v == null ? 0 : double.tryParse(v.toString()) ?? 0;
-  return n.toStringAsFixed(2);
+  // Formato venezolano: punto de miles y coma decimal (3.110.018,90).
+  // Antes se devolvía `3110018.90`, incoherente con los gráficos y el resto
+  // de la interfaz.
+  final partes = n.toStringAsFixed(2).split('.');
+  final entero = partes[0];
+  final negativo = entero.startsWith('-');
+  final digitos = negativo ? entero.substring(1) : entero;
+  final buffer = StringBuffer();
+  for (var i = 0; i < digitos.length; i++) {
+    if (i > 0 && (digitos.length - i) % 3 == 0) buffer.write('.');
+    buffer.write(digitos[i]);
+  }
+  return '${negativo ? '-' : ''}$buffer,${partes[1]}';
 }
 
 double _parseNum(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0.0;
