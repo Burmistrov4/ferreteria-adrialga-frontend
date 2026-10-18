@@ -747,6 +747,31 @@ class ApiService {
     }
   }
 
+  /// Sube una imagen binaria al backend y devuelve su ruta pública
+  /// (`/productos/<archivo>`), o null si falla.
+  static Future<String?> subirImagenProducto(
+    List<int> bytes,
+    String mime,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/productos/imagen'),
+            headers: {..._headers, 'Content-Type': mime},
+            body: bytes,
+          )
+          .timeout(const Duration(seconds: 30));
+      _verificarSesion(response);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['url']?.toString();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// GET /configuracion — datos legales de la tienda (PDF/tickets).
   static Future<Map<String, dynamic>> getConfiguracionTienda() async {
     final response = await http

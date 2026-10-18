@@ -294,7 +294,11 @@ class _InventarioScreenState extends State<InventarioScreen> {
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Producto eliminado')));
+          ).showSnackBar(
+            const SnackBar(
+              content: Text('Producto desactivado (ya no se vende)'),
+            ),
+          );
         }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

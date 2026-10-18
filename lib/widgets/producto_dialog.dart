@@ -4,6 +4,7 @@ import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../services/api_service.dart';
 import '../services/configuracion_service.dart';
+import '../utils/picker_imagen.dart';
 import 'variantes_tab.dart';
 
 class ProductoDialog extends StatefulWidget {
@@ -496,6 +497,30 @@ class _ProductoDialogState extends State<ProductoDialog> {
                       labelText: 'URL de la imagen (opcional)',
                       hintText: 'https://ejemplo.com/foto.jpg',
                     ),
+                  ),
+                  // Subida desde el equipo (web): sube el archivo y escribe su
+                  // ruta en el campo, que es lo que se persiste al guardar.
+                  TextButton.icon(
+                    onPressed: () async {
+                      final elegido = await elegirImagen();
+                      if (elegido == null) return;
+                      final url = await ApiService.subirImagenProducto(
+                        elegido.bytes,
+                        elegido.mime,
+                      );
+                      if (!mounted) return;
+                      if (url == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('No se pudo subir la imagen'),
+                          ),
+                        );
+                      } else {
+                        setState(() => _imagenController.text = url);
+                      }
+                    },
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text('Subir imagen desde el equipo'),
                   ),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
