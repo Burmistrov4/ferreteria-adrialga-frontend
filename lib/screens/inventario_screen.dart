@@ -299,7 +299,10 @@ class _InventarioScreenState extends State<InventarioScreen> {
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Error al eliminar el producto'),
+            content: Text(
+              ApiService.ultimoErrorProducto ??
+                  'Error al eliminar el producto',
+            ),
             backgroundColor: cs.error,
           ),
         );
@@ -624,6 +627,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: pagina,
         ),
+        // Hueco para el FAB "Nuevo Producto": antes el botón de página
+        // siguiente quedaba debajo del FAB y no se podía pulsar.
+        const SizedBox(width: 170),
         siguiente,
       ],
     );

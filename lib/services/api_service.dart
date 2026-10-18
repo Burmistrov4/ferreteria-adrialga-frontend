@@ -718,14 +718,31 @@ class ApiService {
     }
   }
 
+  /// Último mensaje accionable del backend al fallar un borrado de producto.
+  static String? ultimoErrorProducto;
+
   static Future<bool> deleteProducto(int id) async {
     try {
       final response = await http
           .delete(Uri.parse('$baseUrl/productos/$id'))
           .timeout(const Duration(seconds: 10));
       _verificarSesion(response);
-      return response.statusCode == 200 || response.statusCode == 204;
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        ultimoErrorProducto = null;
+        return true;
+      }
+      // Conserva el mensaje del backend (p. ej. P2003: el producto tiene
+      // facturas asociadas) en vez de descartarlo y mostrar un texto genérico.
+      try {
+        final data = jsonDecode(response.body);
+        final msg = (data['message'] ?? data['error'] ?? '').toString().trim();
+        ultimoErrorProducto = msg.isEmpty ? null : msg;
+      } catch (_) {
+        ultimoErrorProducto = null;
+      }
+      return false;
     } catch (_) {
+      ultimoErrorProducto = null;
       return false;
     }
   }
