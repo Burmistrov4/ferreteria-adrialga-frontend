@@ -408,7 +408,14 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                         ),
                         const SizedBox(height: 20),
                         // Acciones.
-                        Row(
+                        // Wrap (no Row): en 360 px los anchos mínimos de los
+                        // tres botones superaban la tarjeta y "Finalizar"
+                        // quedaba cortado fuera de la pantalla.
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
                             TextButton(
                               onPressed: widget.onOmitido,
@@ -420,7 +427,6 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                                 style: TextStyle(color: cs.onSurfaceVariant),
                               ),
                             ),
-                            const Spacer(),
                             if (_index > 0)
                               TextButton(
                                 onPressed: _atras,
@@ -429,7 +435,6 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                                 ),
                                 child: const Text('Atrás'),
                               ),
-                            const SizedBox(width: 8),
                             // Botón principal con rebote vertical (más visible).
                             AnimatedBuilder(
                               animation: _escala,
@@ -443,7 +448,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                               child: FilledButton(
                                 onPressed: _siguiente,
                                 style: FilledButton.styleFrom(
-                                  minimumSize: Size(_esUltimo ? 140 : 120, 48),
+                                  minimumSize: Size(_esUltimo ? 130 : 115, 48),
                                   backgroundColor: cs.primary,
                                   foregroundColor: cs.onPrimary,
                                   elevation: 4,
