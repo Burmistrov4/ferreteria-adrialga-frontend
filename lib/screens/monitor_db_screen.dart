@@ -245,6 +245,12 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
     _pendienteAjuste = true;
     _usuarioManipulo = false;
     _programarAjuste();
+    // En móvil el primer frame puede medir el lienzo después de calcular el
+    // layout; se fuerza un encaje tras un breve retardo para que TODAS las
+    // tablas queden visibles (antes solo se veía una esquina del diagrama).
+    Future.delayed(const Duration(milliseconds: 350), () {
+      if (mounted) _ajustarVista();
+    });
   }
 
   /// Prueba 3..6 columnas y devuelve la que produce una cuadrícula con la
@@ -518,9 +524,13 @@ class _MonitorDbScreenState extends State<MonitorDbScreen>
           children: [
             const Icon(Icons.storage, size: 20),
             const SizedBox(width: 10),
-            const Text('Monitor de Base de Datos'),
+            Text(
+              MediaQuery.sizeOf(context).width < 600
+                  ? 'Monitor BD'
+                  : 'Monitor de Base de Datos',
+            ),
             const SizedBox(width: 12),
-            if (_base != null)
+            if (_base != null && MediaQuery.sizeOf(context).width >= 600)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(

@@ -109,7 +109,9 @@ class _AppShellState extends State<AppShell> {
     DestinoNav(
       icono: Icons.account_balance_wallet_outlined,
       iconoActivo: Icons.account_balance_wallet,
-      etiqueta: 'Caja y Finanzas',
+      // Etiqueta corta: en la barra inferior de 360 px "Caja y Finanzas" se
+      // partía en dos líneas y desalineaba el resto de destinos.
+      etiqueta: 'Caja',
     ),
     DestinoNav(
       icono: Icons.settings_outlined,
